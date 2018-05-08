@@ -1,5 +1,25 @@
 module TimeDependentLinearODESystems
 
+export TimeDependentMatrixState, TimeDependentSchroedingerMatrixState
+export TimeDependentMatrix, TimeDependentSchroedingerMatrix
+export CommutatorFree_Scheme
+export CF2, CF4, CF4o, CF6
+export get_order, number_of_exponentials
+export load_example
+export EquidistantTimeStepper, local_orders, local_orders_est
+export AdaptiveTimeStepper
+
+
+abstract type TimeDependentMatrixState end
+abstract type TimeDependentSchroedingerMatrixState <: TimeDependentMatrixState end
+
+abstract type TimeDependentMatrix end
+abstract type TimeDependentSchroedingerMatrix <: TimeDependentMatrix end
+
+
+load_example(name::String) = include(string(dirname(@__FILE__),"/../examples/",name,".jl"))
+
+
 using FExpokit
 
 import FExpokit: get_lwsp_liwsp_expv 
@@ -11,10 +31,6 @@ const for_Gamma = 1
 const for_Gamma_d = 2
 const for_Gamma_d_symmetrized = 3
 
-
-abstract type TimeDependentMatrix{T} <: AbstractArray{T,2} end
-
-abstract type TimeDependentSchroedingerMatrix{T} <: TimeDependentMatrix{T} end
 
 struct CommutatorFreeScheme
     A::Array{Float64,2}
@@ -51,27 +67,485 @@ CF6 = CommutatorFreeScheme(
   6)
 
 
-function prepare_Omega(A::TimeDependentMatrix, j::Int, which::Int, t::Float64, dt::Float64, scheme::CommutatorFreeScheme)
-    set_matrix_times_minus_i!(H, which!=for_expv) 
-    if which==for_Gamma_d
-       g = 0.0
-       f1 = sum(scheme.c.*scheme.A[j,:].*f.(t+dt*scheme.c))
-    elseif which==for_Gamma_d_symmetrized
-       g = 0.0
-       f1 = sum((scheme.c-0.5).*scheme.A[j,:].*f.(t+dt*scheme.c))
-    else
-       g = sum(scheme.A[j,:])
-       f1 = sum(scheme.A[j,:].*f.(t+dt*scheme.c)) 
-    end   
-    (g, f1)
+function step!(psi::Union{Array{Float64,1},Array{Complex{Float64},1}}, 
+               H::TimeDependentMatrix, 
+               t::Real, dt::Real, scheme::CommutatorFreeScheme,
+               wsp::Array{Complex{Float64},1}, iwsp::Array{Int,1}) #TODO wsp also Array{Float64, 1} !?!?
+    tt = t+dt*scheme.c
+    for j=1:number_of_exponentials(scheme)
+        H1 = H(tt, scheme.A[j,:])
+        expv!(psi, dt, H1, psi, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+    end
+end  
+
+
+function step!(psi::Array{Complex{Float64},1}, H::TimeDependentSchroedingerMatrix, 
+               t::Real, dt::Real, scheme::CommutatorFreeScheme,
+               wsp::Array{Complex{Float64},1}, iwsp::Array{Int,1})
+    tt = t+dt*scheme.c
+    for j=1:number_of_exponentials(scheme)
+        H1 = H(tt, scheme.A[j,:], set_matrix_times_minus_i=false)
+        expv!(psi, dt, H1, psi, anorm=norm0(H1), 
+              matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+    end
+end  
+
+function Gamma!(r::Vector{Complex{Float64}},
+                H::TimeDependentMatrix, Hd::TimeDependentMatrix,
+                u::Vector{Complex{Float64}}, p::Int, dt::Float64, 
+                s1::Vector{Complex{Float64}}, s2::Vector{Complex{Float64}})
+    if p>=1
+        #s1=A*u
+        A_mul_B!(s1, H1d, u)
+        r[:] = dt*s1[:] 
+    end
+    if p>=2
+        #s1=B*s1=BAu
+        A_mul_B!(s1, H1, s1)
+        r[:] += (dt^2/2)*s1[:] 
+    end
+    if p>=3
+        #s1=B*s1=BBAu
+        A_mul_B!(s1, H1, s1)
+        r[:] += (dt^3/6)*s1[:] 
+    end
+    if p>=4
+        #s1=B*s1=BBBAu
+        A_mul_B!(s1, H1, s1)
+        r[:] += (dt^4/24)*s1[:] 
+    end
+    if p>=5
+        #s1=B*s1=BBBBAu
+        A_mul_B!(s1, H1, s1)
+        r[:] += (dt^5/120)*s1[:] 
+    end
+    if p>=6
+        #s1=B*s1=BBBBBAu
+        A_mul_B!(s1, H1, s1)
+        r[:] += (dt^6/720)*s1[:] 
+    end
+
+    if p>=2
+        #s2=B*u
+        A_mul_B!(s2, H1, u)
+        r[:] += s2[:] 
+        #s1=A*s2=ABu
+        A_mul_B!(s1, H1d, s2)
+        r[:] -= (dt^2/2)*s1[:] 
+    end
+    if p>=3
+        #s1=B*s1=BABu
+        A_mul_B!(s1, H1, s1)
+        r[:] -= (dt^3/3)*s1[:] 
+    end
+    if p>=4
+        #s1=B*s1=BBABu
+        A_mul_B!(s1, H1, s1)
+        r[:] -= (dt^4/8)*s1[:] 
+    end
+    if p>=5
+        #s1=B*s1=BBBABu
+        A_mul_B!(s1, H1, s1)
+        r[:] -= (dt^5/30)*s1[:] 
+    end
+    if p>=6
+        #s1=B*s1=BBBBABu
+        A_mul_B!(s1, H1, s1)
+        r[:] -= (dt^6/144)*s1[:] 
+    end
+
+    if p>=3
+        #s2=B*s2=BBu
+        A_mul_B!(s2, H1, s2)
+        #s1=A*s2=ABBu
+        A_mul_B!(s1, H1d, s2)
+        r[:] += (dt^3/6)*s1
+    end
+    if p>=4
+        #s1=B*s1=BABBu
+        A_mul_B!(s1, H1, s1)
+        r[:] += (dt^4/8)*s1
+    end
+    if p>=5
+        #s1=B*s1=BBABBu
+        A_mul_B!(s1, H1, s1)
+        r[:] += (dt^5/20)*s1
+    end
+    if p>=6
+        #s1=B*s1=BBBABBu
+        A_mul_B!(s1, H1, s1)
+        r[:] += (dt^6/72)*s1
+    end
+
+    if p>=4
+        #s2=B*s2=BBBu
+        A_mul_B!(s2, H1, s2)
+        #s1=A*s2=ABBBu
+        ;  A_mul_B!(s1, H1d, s2)
+        r[:] -= (dt^4/24)*s1
+    end
+    if p>=5
+        #s1=B*s1=BABBBu
+        A_mul_B!(s1, H1, s1)
+        r[:] -= (dt^5/30)*s1
+    end
+    if p>=6
+        #s1=B*s1=BBABBBu
+        A_mul_B!(s1, H1, s1)
+        r[:] -= (dt^6/72)*s1
+    end
+
+    if p>=5
+        #s2=B*s2=BBBBu
+        A_mul_B!(s2, H1, s2)
+        #s1=A*s2=ABBBBu
+        A_mul_B!(s1, H1d, s2)
+        r[:] += (dt^5/120)*s1
+    end
+    if p>=6
+        #s1=B*s1=BABBBBu
+        A_mul_B!(s1, H1, s1)
+        r[:] += (dt^6/144)*s1
+    end
+
+    if p>=6
+        #s2=B*s2=BBBBBu
+        A_mul_B!(s2, H1, s2)
+        #s1=A*s2=ABBBBBu
+        A_mul_B!(s1, H1d, s2)
+        r[:] -= (dt^6/720)*s1
+    end
 end
 
-function Omega!(w::Array{Complex{Float64},1}, v::Array{Complex{Float64},1}, H, args::Tuple,
-                p::Int, scheme::CommutatorFreeScheme)
-    g, f1 = args           
-    set_fac!(H, g, f1)
-    A_mul_B!(w, H, v) 
+
+function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
+                 H::TimeDependentSchroedingerMatrix, 
+                 t::Real, dt::Real,
+                 scheme::CommutatorFreeScheme,
+                 wsp::Array{Complex{Float64},1}, iwsp::Array{Int,1}) 
+    n = size(H, 2)
+    s = unsafe_wrap(Array, pointer(wsp, 1), n, false)
+    s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, false)
+    s2 = unsafe_wrap(Array, pointer(wsp, 2*n+1), n, false)
+
+    tt = t+dt*scheme.c
+    
+    # psi = S_1(dt)*psi
+    H1 = H(tt, scheme.A[1,:], set_matrix_times_minus_i=false)
+    expv!(psi, dt, H1, psi, anorm=norm0(H1), 
+          matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+
+    # psi_est = Gamma_1(dt)*psi
+    H1 = H(tt, scheme.A[1,:], set_matrix_times_minus_i=true)
+    H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true, set_matrix_times_minus_i=true)
+    Gamma!(psi_est, H1, H1d, psi, scheme.p, dt, s1, s2)
+
+    for j=2:number_of_exponentials(scheme)
+
+        # psi_est = S_j(dt)*psi_est
+        H1 = H(tt, scheme.A[j,:], set_matrix_times_minus_i=false)
+        expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), 
+              matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+
+        # psi = S_j(dt)*psi
+        expv!(psi, dt, H1, psi, anorm=norm0(H1), 
+              matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+    
+        # psi_est = psi_est+Gamma_j(dt)*psi-A(t+dt)*psi
+        #  s = Gamma_j(dt)*psi
+        H1 = H(tt, scheme.A[1,:], set_matrix_times_minus_i=true)
+        H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true, set_matrix_times_minus_i=true)
+        Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2)
+
+        # psi_est = psi_est+s
+        psi_est[:] += s[:]
+
+    end
+   
+    #  s = A(t+dt)*psi
+    H1 = H(t+dt, set_matrix_times_minus_i=true)
+    A_mul_B!(s, H, psi)
+    #  psi_est = psi_est-s
+    psi_est[:] -= s[:]
+
+    # psi_est = psi_est*dt/(p+1)
+    psi_est[:] *= dt/(scheme.p+1)
+
 end
 
 
-end module #TimeDependentLinearODESystems
+
+function step_estimated!{T<:Union{Array{Float64,1},Array{Complex{Float64},1}}}(
+                         psi::T,
+                         psi_est::T,
+                         H::TimeDependentMatrix, 
+                         t::Real, dt::Real,
+                         scheme::CommutatorFreeScheme, 
+                         wsp::Array{Complex{Float64},1}, iwsp::Array{Int,1}) #TODO wsp also Array{Float64, 1} !?!?
+
+    n = size(H, 2)
+    s = unsafe_wrap(Array,  pointer(wsp, 1), n, false)
+    s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, false)
+    s2 = unsafe_wrap(Array, pointer(wsp, 2*n+1), n, false)
+
+    tt = t+dt*scheme.c
+    
+    # psi = S_1(dt)*psi
+    H1 = H(tt, scheme.A[1,:])
+    expv!(psi, dt, H1, psi, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+
+    # psi_est = Gamma_1(dt)*psi
+    H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true)
+    Gamma!(psi_est, H1, H1d, psi, scheme.p, dt, s1, s2)
+
+    for j=2:number_of_exponentials(scheme)
+
+        # psi_est = S_j(dt)*psi_est
+        H1 = H(tt, scheme.A[j,:])
+        expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+
+        # psi = S_j(dt)*psi
+        expv!(psi, dt, H1, psi, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+    
+        # psi_est = psi_est+Gamma_j(dt)*psi-A(t+dt)*psi
+        #  s = Gamma_j(dt)*psi
+        H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true)
+        Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2)
+
+        # psi_est = psi_est+s
+        psi_est[:] += s[:]
+
+    end
+   
+    #  s = A(t+dt)*psi
+    H1 = H(t+dt)
+    A_mul_B!(s, H, psi)
+    #  psi_est = psi_est-s
+    psi_est[:] -= s[:]
+
+    # psi_est = psi_est*dt/(p+1)
+    psi_est[:] *= dt/(scheme.p+1)
+
+end
+
+
+struct EquidistantTimeStepper
+    H::TimeDependentMatrix
+    psi::Array{Complex{Float64},1}
+    t0::Float64
+    tend::Float64
+    dt::Float64
+    scheme
+    wsp  :: Array{Complex{Float64},1}  # workspace for expokit
+    iwsp :: Array{Int32,1}    # workspace for expokit
+    function EquidistantTimeStepper(H::TimeDependentMatrix, 
+                 psi::Array{Complex{Float64},1},
+                 t0::Real, tend::Real, dt::Real; scheme=CF4)
+
+        # allocate workspace
+        lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
+        wsp = zeros(Complex{Float64}, lwsp)
+        iwsp = zeros(Int, liwsp) 
+        new(H, psi, t0, tend, dt, scheme, wsp, iwsp)
+    end
+end
+
+Base.start(ets::EquidistantTimeStepper) = ets.t0
+
+function Base.done(ets::EquidistantTimeStepper, t) 
+    if t >= ets.tend
+        return true
+    end
+    false
+end
+
+function Base.next(ets::EquidistantTimeStepper, t)
+    step!(ets.psi, ets.H, t, ets.dt, ets.scheme, ets.wsp, ets.iwsp)
+    t1 = t + ets.dt < ets.tend ? t + ets.dt : ets.tend
+    t1, t1
+end
+
+function local_orders(H::TimeDependentMatrix,
+                      psi::Array{Complex{Float64},1}, t0::Real, dt::Real; 
+                      scheme=CF2, reference_scheme=scheme, 
+                      reference_steps=10,
+                      rows=8)
+    tab = zeros(Float64, rows, 3)
+
+    # allocate workspace
+    lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
+    wsp = zeros(Complex{Float64}, lwsp)
+    iwsp = zeros(Int, liwsp) 
+
+    wf_save_initial_value = copy(psi)
+    psi_ref = copy(psi)
+
+    dt1 = dt
+    err_old = 0.0
+    println("             dt         err      p")
+    println("-----------------------------------")
+    for row=1:rows
+        step!(psi, H, t0, dt1, scheme, wsp, iwsp)
+        psi_ref = copy(wf_save_initial_value)
+        dt1_ref = dt1/reference_steps
+        for k=1:reference_steps
+            step!(psi_ref, H, t0+(k-1)*dt1_ref, dt1_ref, reference_scheme, wsp, iwsp)
+        end    
+        err = norm(psi-psi_ref)
+        if (row==1) 
+            @printf("%3i%12.3e%12.3e\n", row, Float64(dt1), Float64(err))
+            tab[row,1] = dt1
+            tab[row,2] = err
+            tab[row,3] = 0 
+        else
+            p = log(err_old/err)/log(2.0);
+            @printf("%3i%12.3e%12.3e%7.2f\n", row, Float64(dt1), Float64(err), Float64(p))
+            tab[row,1] = dt1
+            tab[row,2] = err
+            tab[row,3] = p 
+        end
+        err_old = err
+        dt1 = 0.5*dt1
+        psi = copy(wf_save_initial_value)
+    end
+
+    tab
+end
+
+function local_orders_est(H::TimeDependentMatrix,
+                      psi::Array{Complex{Float64},1}, t0::Real, dt::Real; 
+                      scheme=CF2_defectbased, reference_scheme=CF4, 
+                      reference_steps=10,
+                      rows=8)
+    tab = zeros(Float64, rows, 5)
+
+    # allocate workspace
+    lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
+    wsp = zeros(Complex{Float64}, lwsp)
+    iwsp = zeros(Int, liwsp) 
+
+    wf_save_initial_value = copy(psi)
+    psi_ref = copy(psi)
+    psi_est = copy(psi)
+
+    dt1 = dt
+    err_old = 0.0
+    err_est_old = 0.0
+    println("             dt         err      p       err_est      p")
+    println("--------------------------------------------------------")
+    for row=1:rows
+        step_estimated!(psi, psi_est, H, t0, dt1, scheme, wsp, iwsp)
+        psi_ref = copy(wf_save_initial_value)
+        dt1_ref = dt1/reference_steps
+        for k=1:reference_steps
+            step!(psi_ref, H, t0+(k-1)*dt1_ref, dt1_ref, reference_scheme, wsp, iwsp)
+        end    
+        err = norm(psi-psi_ref)
+        err_est = norm(psi-psi_ref-psi_est)
+        if (row==1) 
+            @printf("%3i%12.3e%12.3e  %19.3e\n", row, Float64(dt1), Float64(err), Float64(err_est))
+            tab[row,1] = dt1
+            tab[row,2] = err
+            tab[row,3] = 0 
+            tab[row,4] = err_est
+            tab[row,5] = 0 
+        else
+            p = log(err_old/err)/log(2.0);
+            p_est = log(err_est_old/err_est)/log(2.0);
+            @printf("%3i%12.3e%12.3e%7.2f  %12.3e%7.2f\n", 
+                    row, Float64(dt1), Float64(err), Float64(p), 
+                                       Float64(err_est), Float64(p_est))
+            tab[row,1] = dt1
+            tab[row,2] = err
+            tab[row,3] = p 
+            tab[row,4] = err_est
+            tab[row,5] = p_est 
+        end
+        err_old = err
+        err_est_old = err_est
+        dt1 = 0.5*dt1
+        psi = copy(wf_save_initial_value)
+    end
+    # deallocate workspace
+    set_wsp!(H, 0)
+    set_iwsp!(H, 0)
+
+    tab
+end
+
+
+struct AdaptiveTimeStepper
+    H::TimeDependentMatrix
+    psi::Array{Complex{Float64},1}
+    t0::Float64
+    tend::Float64
+    dt::Float64
+    tol::Float64
+    order::Int
+    scheme
+    psi_est::Array{Complex{Float64},1}
+    psi0::Array{Complex{Float64},1}
+    wsp  :: Array{Complex{Float64},1}  # workspace for expokit
+    iwsp :: Array{Int32,1}    # workspace for expokit
+
+    function AdaptiveTimeStepper(H::TimeDependentMatrix, 
+                 psi::Array{Complex{Float64},1},
+                 t0::Real, tend::Real, dt::Real,  tol::Real; scheme=CF4)
+        order = get_order(scheme)
+
+        # allocate workspace
+        lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
+        wsp = zeros(Complex{Float64}, lwsp)
+        iwsp = zeros(Int, liwsp) 
+
+        psi_est = zeros(Complex{Float64}, size(H, 2))
+        psi0 = zeros(Complex{Float64}, size(H, 2))
+        
+        new(H, psi, t0, tend, dt, tol, order, scheme, psi_est, psi0, wsp, iwsp)
+    end
+    
+end
+
+immutable AdaptiveTimeStepperState
+   t::Real
+   dt::Real
+end   
+
+Base.start(ats::AdaptiveTimeStepper) = AdaptiveTimeStepperState(ats.t0, ats.dt)
+
+function Base.done(ats::AdaptiveTimeStepper, state::AdaptiveTimeStepperState)
+    if state.t >= ats.tend
+        return true
+    end
+    false
+end  
+
+function Base.next(ats::AdaptiveTimeStepper, state::AdaptiveTimeStepperState)
+    const facmin = 0.25
+    const facmax = 4.0
+    const fac = 0.9
+
+    dt = state.dt
+    dt0 = dt
+    ats.psi0[:] = ats.psi[:]
+    err = 2.0
+    while err>=1.0
+        dt = min(dt, ats.tend-state.t)
+        dt0 = dt
+        step_estimated!(ats.psi, ats.psi_est, ats.H, state.t, dt, ats.scheme, ats.wsp, ats.iwsp)
+        err = norm(ats.psi_est)/ats.tol
+        dt = dt*min(facmax, max(facmin, fac*(1.0/err)^(1.0/(ats.order+1))))
+        if err>=1.0
+           ats.psi[:] = ats.psi0
+           @printf("t=%17.9e  err=%17.8e  dt=%17.8e  rejected...\n", Float64(state.t), Float64(err), Float64(dt))
+        end   
+    end
+    state.t + dt0, AdaptiveTimeStepperState(state.t+dt0, dt)
+end
+
+
+
+
+
+
+end #TimeDependentLinearODESystems
