@@ -17,7 +17,7 @@ abstract type TimeDependentMatrix end
 abstract type TimeDependentSchroedingerMatrix <: TimeDependentMatrix end
 
 
-load_example(name::String) = include(string(dirname(@__FILE__),"/../examples/",name,".jl"))
+load_example(name::String) = include(string(dirname(@__FILE__),"/../examples/",name))
 
 
 using FExpokit
@@ -96,123 +96,123 @@ function Gamma!(r::Vector{Complex{Float64}},
                 s1::Vector{Complex{Float64}}, s2::Vector{Complex{Float64}})
     if p>=1
         #s1=A*u
-        A_mul_B!(s1, H1d, u)
+        A_mul_B!(s1, Hd, u)
         r[:] = dt*s1[:] 
     end
     if p>=2
         #s1=B*s1=BAu
-        A_mul_B!(s1, H1, s1)
+        A_mul_B!(s1, H, s1)
         r[:] += (dt^2/2)*s1[:] 
     end
     if p>=3
         #s1=B*s1=BBAu
-        A_mul_B!(s1, H1, s1)
+        A_mul_B!(s1, H, s1)
         r[:] += (dt^3/6)*s1[:] 
     end
     if p>=4
         #s1=B*s1=BBBAu
-        A_mul_B!(s1, H1, s1)
+        A_mul_B!(s1, H, s1)
         r[:] += (dt^4/24)*s1[:] 
     end
     if p>=5
         #s1=B*s1=BBBBAu
-        A_mul_B!(s1, H1, s1)
+        A_mul_B!(s1, H, s1)
         r[:] += (dt^5/120)*s1[:] 
     end
     if p>=6
         #s1=B*s1=BBBBBAu
-        A_mul_B!(s1, H1, s1)
+        A_mul_B!(s1, H, s1)
         r[:] += (dt^6/720)*s1[:] 
     end
 
     if p>=2
         #s2=B*u
-        A_mul_B!(s2, H1, u)
+        A_mul_B!(s2, H, u)
         r[:] += s2[:] 
         #s1=A*s2=ABu
-        A_mul_B!(s1, H1d, s2)
+        A_mul_B!(s1, Hd, s2)
         r[:] -= (dt^2/2)*s1[:] 
     end
     if p>=3
         #s1=B*s1=BABu
-        A_mul_B!(s1, H1, s1)
+        A_mul_B!(s1, H, s1)
         r[:] -= (dt^3/3)*s1[:] 
     end
     if p>=4
         #s1=B*s1=BBABu
-        A_mul_B!(s1, H1, s1)
+        A_mul_B!(s1, H, s1)
         r[:] -= (dt^4/8)*s1[:] 
     end
     if p>=5
         #s1=B*s1=BBBABu
-        A_mul_B!(s1, H1, s1)
+        A_mul_B!(s1, H, s1)
         r[:] -= (dt^5/30)*s1[:] 
     end
     if p>=6
         #s1=B*s1=BBBBABu
-        A_mul_B!(s1, H1, s1)
+        A_mul_B!(s1, H, s1)
         r[:] -= (dt^6/144)*s1[:] 
     end
 
     if p>=3
         #s2=B*s2=BBu
-        A_mul_B!(s2, H1, s2)
+        A_mul_B!(s2, H, s2)
         #s1=A*s2=ABBu
-        A_mul_B!(s1, H1d, s2)
+        A_mul_B!(s1, Hd, s2)
         r[:] += (dt^3/6)*s1
     end
     if p>=4
         #s1=B*s1=BABBu
-        A_mul_B!(s1, H1, s1)
+        A_mul_B!(s1, H, s1)
         r[:] += (dt^4/8)*s1
     end
     if p>=5
         #s1=B*s1=BBABBu
-        A_mul_B!(s1, H1, s1)
+        A_mul_B!(s1, H, s1)
         r[:] += (dt^5/20)*s1
     end
     if p>=6
         #s1=B*s1=BBBABBu
-        A_mul_B!(s1, H1, s1)
+        A_mul_B!(s1, H, s1)
         r[:] += (dt^6/72)*s1
     end
 
     if p>=4
         #s2=B*s2=BBBu
-        A_mul_B!(s2, H1, s2)
+        A_mul_B!(s2, H, s2)
         #s1=A*s2=ABBBu
-        ;  A_mul_B!(s1, H1d, s2)
+        ;  A_mul_B!(s1, Hd, s2)
         r[:] -= (dt^4/24)*s1
     end
     if p>=5
         #s1=B*s1=BABBBu
-        A_mul_B!(s1, H1, s1)
+        A_mul_B!(s1, H, s1)
         r[:] -= (dt^5/30)*s1
     end
     if p>=6
         #s1=B*s1=BBABBBu
-        A_mul_B!(s1, H1, s1)
+        A_mul_B!(s1, H, s1)
         r[:] -= (dt^6/72)*s1
     end
 
     if p>=5
         #s2=B*s2=BBBBu
-        A_mul_B!(s2, H1, s2)
+        A_mul_B!(s2, H, s2)
         #s1=A*s2=ABBBBu
-        A_mul_B!(s1, H1d, s2)
+        A_mul_B!(s1, Hd, s2)
         r[:] += (dt^5/120)*s1
     end
     if p>=6
         #s1=B*s1=BABBBBu
-        A_mul_B!(s1, H1, s1)
+        A_mul_B!(s1, H, s1)
         r[:] += (dt^6/144)*s1
     end
 
     if p>=6
         #s2=B*s2=BBBBBu
-        A_mul_B!(s2, H1, s2)
+        A_mul_B!(s2, H, s2)
         #s1=A*s2=ABBBBBu
-        A_mul_B!(s1, H1d, s2)
+        A_mul_B!(s1, Hd, s2)
         r[:] -= (dt^6/720)*s1
     end
 end
