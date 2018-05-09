@@ -70,22 +70,22 @@ CF6 = CommutatorFreeScheme(
 function step!(psi::Union{Array{Float64,1},Array{Complex{Float64},1}}, 
                H::TimeDependentMatrix, 
                t::Real, dt::Real, scheme::CommutatorFreeScheme,
-               wsp::Array{Complex{Float64},1}, iwsp::Array{Int,1}) #TODO wsp also Array{Float64, 1} !?!?
+               wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1}) #TODO wsp also Array{Float64, 1} !?!?
     tt = t+dt*scheme.c
     for j=1:number_of_exponentials(scheme)
         H1 = H(tt, scheme.A[j,:])
-        expv!(psi, dt, H1, psi, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+        expv!(psi, dt, H1, psi, anorm=norm(H1, approx=true), wsp=wsp, iwsp=iwsp)
     end
 end  
 
 
 function step!(psi::Array{Complex{Float64},1}, H::TimeDependentSchroedingerMatrix, 
                t::Real, dt::Real, scheme::CommutatorFreeScheme,
-               wsp::Array{Complex{Float64},1}, iwsp::Array{Int,1})
+               wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1})
     tt = t+dt*scheme.c
     for j=1:number_of_exponentials(scheme)
-        H1 = H(tt, scheme.A[j,:], set_matrix_times_minus_i=false)
-        expv!(psi, dt, H1, psi, anorm=norm0(H1), 
+        H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=false)
+        expv!(psi, dt, H1, psi, anorm=norm(H1, approx=true), 
               matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
     end
 end  
@@ -222,7 +222,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
                  H::TimeDependentSchroedingerMatrix, 
                  t::Real, dt::Real,
                  scheme::CommutatorFreeScheme,
-                 wsp::Array{Complex{Float64},1}, iwsp::Array{Int,1}) 
+                 wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1}) 
     n = size(H, 2)
     s = unsafe_wrap(Array, pointer(wsp, 1), n, false)
     s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, false)
@@ -231,30 +231,30 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     tt = t+dt*scheme.c
     
     # psi = S_1(dt)*psi
-    H1 = H(tt, scheme.A[1,:], set_matrix_times_minus_i=false)
-    expv!(psi, dt, H1, psi, anorm=norm0(H1), 
+    H1 = H(tt, scheme.A[1,:], matrix_times_minus_i=false)
+    expv!(psi, dt, H1, psi, anorm=norm(H1, approx=true), 
           matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
 
     # psi_est = Gamma_1(dt)*psi
-    H1 = H(tt, scheme.A[1,:], set_matrix_times_minus_i=true)
-    H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true, set_matrix_times_minus_i=true)
+    H1 = H(tt, scheme.A[1,:], matrix_times_minus_i=true)
+    H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true, matrix_times_minus_i=true)
     Gamma!(psi_est, H1, H1d, psi, scheme.p, dt, s1, s2)
 
     for j=2:number_of_exponentials(scheme)
 
         # psi_est = S_j(dt)*psi_est
-        H1 = H(tt, scheme.A[j,:], set_matrix_times_minus_i=false)
-        expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), 
+        H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=false)
+        expv!(psi_est, dt, H1, psi_est, norm=norm(H1, approx=true), 
               matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
 
         # psi = S_j(dt)*psi
-        expv!(psi, dt, H1, psi, anorm=norm0(H1), 
+        expv!(psi, dt, H1, psi, anorm=norm(H1, approx=true), 
               matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
     
         # psi_est = psi_est+Gamma_j(dt)*psi-A(t+dt)*psi
         #  s = Gamma_j(dt)*psi
-        H1 = H(tt, scheme.A[1,:], set_matrix_times_minus_i=true)
-        H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true, set_matrix_times_minus_i=true)
+        H1 = H(tt, scheme.A[1,:], matrix_times_minus_i=true)
+        H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true, matrix_times_minus_i=true)
         Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2)
 
         # psi_est = psi_est+s
@@ -263,7 +263,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     end
    
     #  s = A(t+dt)*psi
-    H1 = H(t+dt, set_matrix_times_minus_i=true)
+    H1 = H(t+dt, matrix_times_minus_i=true)
     A_mul_B!(s, H, psi)
     #  psi_est = psi_est-s
     psi_est[:] -= s[:]
@@ -281,7 +281,7 @@ function step_estimated!{T<:Union{Array{Float64,1},Array{Complex{Float64},1}}}(
                          H::TimeDependentMatrix, 
                          t::Real, dt::Real,
                          scheme::CommutatorFreeScheme, 
-                         wsp::Array{Complex{Float64},1}, iwsp::Array{Int,1}) #TODO wsp also Array{Float64, 1} !?!?
+                         wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1}) #TODO wsp also Array{Float64, 1} !?!?
 
     n = size(H, 2)
     s = unsafe_wrap(Array,  pointer(wsp, 1), n, false)
@@ -292,7 +292,7 @@ function step_estimated!{T<:Union{Array{Float64,1},Array{Complex{Float64},1}}}(
     
     # psi = S_1(dt)*psi
     H1 = H(tt, scheme.A[1,:])
-    expv!(psi, dt, H1, psi, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+    expv!(psi, dt, H1, psi, anorm=norm(H1, approx=true), wsp=wsp, iwsp=iwsp)
 
     # psi_est = Gamma_1(dt)*psi
     H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true)
@@ -302,10 +302,10 @@ function step_estimated!{T<:Union{Array{Float64,1},Array{Complex{Float64},1}}}(
 
         # psi_est = S_j(dt)*psi_est
         H1 = H(tt, scheme.A[j,:])
-        expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+        expv!(psi_est, dt, H1, psi_est, norm=norm(H1, approx=true), wsp=wsp, iwsp=iwsp)
 
         # psi = S_j(dt)*psi
-        expv!(psi, dt, H1, psi, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+        expv!(psi, dt, H1, psi, anorm=norm(H1, approx=true), wsp=wsp, iwsp=iwsp)
     
         # psi_est = psi_est+Gamma_j(dt)*psi-A(t+dt)*psi
         #  s = Gamma_j(dt)*psi
@@ -345,7 +345,7 @@ struct EquidistantTimeStepper
         # allocate workspace
         lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
         wsp = zeros(Complex{Float64}, lwsp)
-        iwsp = zeros(Int, liwsp) 
+        iwsp = zeros(Int32, liwsp) 
         new(H, psi, t0, tend, dt, scheme, wsp, iwsp)
     end
 end
@@ -375,7 +375,7 @@ function local_orders(H::TimeDependentMatrix,
     # allocate workspace
     lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
     wsp = zeros(Complex{Float64}, lwsp)
-    iwsp = zeros(Int, liwsp) 
+    iwsp = zeros(Int32, liwsp) 
 
     wf_save_initial_value = copy(psi)
     psi_ref = copy(psi)
@@ -422,7 +422,7 @@ function local_orders_est(H::TimeDependentMatrix,
     # allocate workspace
     lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
     wsp = zeros(Complex{Float64}, lwsp)
-    iwsp = zeros(Int, liwsp) 
+    iwsp = zeros(Int32, liwsp) 
 
     wf_save_initial_value = copy(psi)
     psi_ref = copy(psi)
@@ -496,7 +496,7 @@ struct AdaptiveTimeStepper
         # allocate workspace
         lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
         wsp = zeros(Complex{Float64}, lwsp)
-        iwsp = zeros(Int, liwsp) 
+        iwsp = zeros(Int32, liwsp) 
 
         psi_est = zeros(Complex{Float64}, size(H, 2))
         psi0 = zeros(Complex{Float64}, size(H, 2))

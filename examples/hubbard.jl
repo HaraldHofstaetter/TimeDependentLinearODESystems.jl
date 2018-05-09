@@ -1,4 +1,3 @@
-
 mutable struct Hubbard <: TimeDependentSchroedingerMatrix 
     N_s    :: Int
     n_up   :: Int
@@ -51,8 +50,9 @@ function (H::Hubbard)(t::Real; compute_derivative::Bool=false,
     HubbardState(matrix_times_minus_i, compute_derivative, fac_diag, fac_offdiag, H)
 end
 
-function (H::Hubbard)(t::Real; compute_derivative::Bool=false,
-                               matrix_times_minus_i::Bool=false)
+function (H::Hubbard)(t::Vector{Float64}, c::Vector{Float64};
+                      compute_derivative::Bool=false,
+                      matrix_times_minus_i::Bool=false)
     n = length(t)
     @assert n==length(c)&&n>0 "t, c must be vectors of same length>1"
     if  compute_derivative
@@ -330,7 +330,7 @@ function hubbard(N_s::Int, n_up::Int, n_down::Int, v_symm::Array{Float64,2}, v_a
     H =  Hubbard(N_s, n_up, n_down, N_up, N_down, N_psi, N_nz,
                            v_symm, v_anti, U, Float64[], spzeros(1,1), spzeros(1,1),
                            tab_up, tab_inv_up, tab_down, tab_inv_down,
-                           1.0, 1.0, store_full_matrices, f, fd, 0.0)
+                           store_full_matrices, f, fd, 0.0)
     if nprocs()>1
         gen_H_diag_parallel(H)
         gen_H_upper_parallel(H)
@@ -419,7 +419,10 @@ function energy(H::HubbardState, psi::Union{Array{Complex{Float64},1},Array{Floa
     real(dot(psi,psi1))
 end
 
-function norm(H::HubbardState, p::Real=2)
+function norm(H::HubbardState, p::Real=2; approx::Bool=false)
+    if approx
+        return H.H.norm0
+    end
     if p==2
         throw(ArgumentError("2-norm not implemented for Hubbard. Try norm(H, p) where p=1 or Inf."))
     elseif !(p==1 || p==Inf)
@@ -441,6 +444,4 @@ function norm(H::HubbardState, p::Real=2)
     s[:] += abs(H.fac_diag)*abs.(H.H.H_diag)
     maximum(s)
 end
-
-norm0(H::HubbardState) = H.H.norm0
 
