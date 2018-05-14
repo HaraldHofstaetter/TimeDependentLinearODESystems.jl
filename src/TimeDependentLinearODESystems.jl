@@ -3,7 +3,7 @@ module TimeDependentLinearODESystems
 export TimeDependentMatrixState, TimeDependentSchroedingerMatrixState
 export TimeDependentMatrix, TimeDependentSchroedingerMatrix
 export CommutatorFree_Scheme
-export CF2, CF4, CF4o, CF6, DoPri45
+export CF2, CF4, CF4o, CF6, DoPri45, Magnus4
 export get_order, number_of_exponentials
 export load_example
 export EquidistantTimeStepper, local_orders, local_orders_est
@@ -405,6 +405,68 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
       # TODO: K[7] can be reused as K[1] for the next step (FSAL, first same as last)
 end
 
+
+abstract type Magnus4 end
+
+function get_lwsp_liwsp_expv(H, scheme::Type{Magnus4}, m::Integer=30) 
+    (lw, liw) = get_lwsp_liwsp_expv(size(H, 2), m)
+    (lw+size(H, 2), liw)
+end
+
+get_order(::Type{Magnus4}) = 4
+number_of_exponentials(::Type{Magnus4}) = 1
+
+struct Magnus4State <: TimeDependentMatrixState
+    H1::TimeDependentMatrixState
+    H2::TimeDependentMatrixState
+    f_dt::Float64
+end
+
+#struct Magnus4DerivativeState <: TimeDependentSchroedingerMatrixState
+#    H1::TimeDependentSchroedingerMatrixState
+#    H2::TimeDependentSchroedingerMatrixState
+#    Hd1::TimeDependentSchroedingerMatrixState
+#    Hd2::TimeDependentSchroedingerMatrixState
+#    dt::Float64
+#    s::Array{Complex{Float64},1}
+#end
+
+import Base.LinAlg: A_mul_B!, issymmetric, ishermitian, checksquare
+import Base: eltype, size, norm, full
+
+size(H::Magnus4State) = size(H.H1)
+size(H::Magnus4State, dim::Int) = size(H.H1, dim) 
+eltype(H::Magnus4State) = eltype(H.H1) 
+issymmetric(H::Magnus4State) = issymmetric(H.H1) # TODO: check 
+ishermitian(H::Magnus4State) = ishermitian(H.H1) # TODO: check 
+checksquare(H::Magnus4State) = checksquare(H.H1)
+
+function A_mul_B!(Y, H::Magnus4State, B)
+    X = H.s 
+    A_mul_B!(X, H.H1, B)
+    Y[:] = 0.5*X[:]
+    A_mul_B!(X, H.H2, X)
+    Y[:] += H.f_dt*X[:]
+    A_mul_B!(X, H.H2, B)
+    Y[:] += 0.5*X[:]
+    A_mul_B!(X, H.H1, X)
+    Y[:] -= H.f_dt*X[:]
+end
+
+
+function step!(psi::Array{Complex{Float64},1}, H::TimeDependentSchroedingerMatrix, 
+               t::Real, dt::Real, scheme::Magnus4,
+               wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1})
+    c1 = f(t+dt*(1/2-sqrt(3)/6))
+    c2 = f(t+dt*(1/2+sqrt(3)/6))
+    H1 = H(t + c1*dt, matrix_times_minus_i=false)
+    H2 = H(t + c2*dt, matrix_times_minus_i=false)
+    f_dt = sqrt(3)/12
+    s = similar(psi) # TODO: take somthing from wsp
+    HH = Magnus4State(H1, H2, f_dt, s)
+    expv!(psi, dt, HH, psi, anorm=norm0(H1), 
+         matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+end  
 
 
 struct EquidistantTimeStepper

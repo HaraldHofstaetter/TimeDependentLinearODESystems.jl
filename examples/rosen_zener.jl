@@ -95,13 +95,11 @@ issymmetric(H::RosenZenerState) = !H.matrix_times_minus_i && H.c2==0.0
 ishermitian(H::RosenZenerState) = !H.matrix_times_minus_i 
 checksquare(H::RosenZenerState) = H.H.d
 
-function norm(H::RosenZenerState, p=2, approx::Bool=false)
-    if !approx
-        if p==2
-            throw(ArgumentError("2-norm not implemented for RosenZener. Try norm(H, p) where p=1 or Inf."))
-        elseif !(p==1 || p==Inf)
-            throw(ArgumentError("invalid p-norm p=$p. Valid: 1, Inf"))
-        end
+function norm(H::RosenZenerState, p=2)
+    if p==2
+        throw(ArgumentError("2-norm not implemented for RosenZener. Try norm(H, p) where p=1 or Inf."))
+    elseif !(p==1 || p==Inf)
+        throw(ArgumentError("invalid p-norm p=$p. Valid: 1, Inf"))
     end
     abs(H.c1)*H.H.norm_H1 + abs(H.c2)*H.H.norm_H2
 end
