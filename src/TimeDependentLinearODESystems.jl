@@ -227,53 +227,68 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
                  H::TimeDependentSchroedingerMatrix, 
                  t::Real, dt::Real,
                  scheme::CommutatorFreeScheme,
-                 wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1}) 
+                 wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
+                 symmetrized_defect::Bool=false) 
     n = size(H, 2)
     s = unsafe_wrap(Array, pointer(wsp, 1), n, false)
     s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, false)
     s2 = unsafe_wrap(Array, pointer(wsp, 2*n+1), n, false)
 
     tt = t+dt*scheme.c
+
+    if symmetrized_defect
+        H1 = H(t, matrix_times_minus_i=true)
+        A_mul_B!(psi_est, H1, psi)
+        psi_est[:] *= -0.5
+        
+        H1 = H(tt, scheme.A[1,:], matrix_times_minus_i=false)
+        expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), 
+              matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+    else
+        psi_est[:] = 0.0
+    end
     
-    # psi = S_1(dt)*psi
     H1 = H(tt, scheme.A[1,:], matrix_times_minus_i=false)
     expv!(psi, dt, H1, psi, anorm=norm0(H1),
           matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
 
-    # psi_est = Gamma_1(dt)*psi
     H1 = H(tt, scheme.A[1,:], matrix_times_minus_i=true)
-    H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true, matrix_times_minus_i=true)
-    Gamma!(psi_est, H1, H1d, psi, scheme.p, dt, s1, s2)
+    if symmetrized_defect
+        H1d = H(tt, (scheme.c-0.5).*scheme.A[1,:], compute_derivative=true, matrix_times_minus_i=true)
+    else
+        H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true, matrix_times_minus_i=true)
+    end
+    Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2)
+    psi_est[:] += s[:]
 
     for j=2:number_of_exponentials(scheme)
 
-        # psi_est = S_j(dt)*psi_est
         H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=false)
         expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), 
               matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
 
-        # psi = S_j(dt)*psi
         expv!(psi, dt, H1, psi, anorm=norm0(H1),
               matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
     
-        # psi_est = psi_est+Gamma_j(dt)*psi-A(t+dt)*psi
-        #  s = Gamma_j(dt)*psi
         H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=true)
-        H1d = H(tt, scheme.c.*scheme.A[j,:], compute_derivative=true, matrix_times_minus_i=true)
+        if symmetrized_defect
+            H1d = H(tt, (scheme.c-0.5).*scheme.A[j,:], compute_derivative=true, matrix_times_minus_i=true)
+        else
+            H1d = H(tt, scheme.c.*scheme.A[j,:], compute_derivative=true, matrix_times_minus_i=true)
+        end
         Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2)
 
-        # psi_est = psi_est+s
         psi_est[:] += s[:]
 
     end
    
-    #  s = A(t+dt)*psi
     H1 = H(t+dt, matrix_times_minus_i=true)
     A_mul_B!(s, H1, psi)
-    #  psi_est = psi_est-s
+    if symmetrized_defect
+        s[:] *= 0.5
+    end
     psi_est[:] -= s[:]
 
-    # psi_est = psi_est*dt/(p+1)
     psi_est[:] *= dt/(scheme.p+1)
 
 end
@@ -294,30 +309,43 @@ function step_estimated!{T<:Union{Array{Float64,1},Array{Complex{Float64},1}}}(
     s2 = unsafe_wrap(Array, pointer(wsp, 2*n+1), n, false)
 
     tt = t+dt*scheme.c
+
+    if symmetrized_defect
+        H1 = H(t)
+        A_mul_B!(psi_est, H1, psi)
+        psi_est[:] *= -0.5
+        
+        H1 = H(tt, scheme.A[1,:])
+        expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+    else
+        psi_est[:] = 0.0
+    end
     
-    # psi = S_1(dt)*psi
     H1 = H(tt, scheme.A[1,:])
     expv!(psi, dt, H1, psi, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
 
-    # psi_est = Gamma_1(dt)*psi
-    H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true)
-    Gamma!(psi_est, H1, H1d, psi, scheme.p, dt, s1, s2)
+    if symmetrized_defect
+        H1d = H(tt, (scheme.c-0.5).*scheme.A[1,:], compute_derivative=true)
+    else
+        H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true)
+    end
+    Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2)
+    psi_est[:] += s[:]
 
     for j=2:number_of_exponentials(scheme)
 
-        # psi_est = S_j(dt)*psi_est
         H1 = H(tt, scheme.A[j,:])
         expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
 
-        # psi = S_j(dt)*psi
         expv!(psi, dt, H1, psi, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
-    
-        # psi_est = psi_est+Gamma_j(dt)*psi-A(t+dt)*psi
-        #  s = Gamma_j(dt)*psi
-        H1d = H(tt, scheme.c.*scheme.A[j,:], compute_derivative=true)
+
+        if symmetrized_defect
+            H1d = H(tt, (scheme.c-0.5).*scheme.A[j,:], compute_derivative=true)
+        else
+            H1d = H(tt, scheme.c.*scheme.A[j,:], compute_derivative=true)
+        end
         Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2)
 
-        # psi_est = psi_est+s
         psi_est[:] += s[:]
 
     end
@@ -421,6 +449,7 @@ function local_orders_est(H::TimeDependentMatrix,
                       psi::Array{Complex{Float64},1}, t0::Real, dt::Real; 
                       scheme=CF2_defectbased, reference_scheme=CF4, 
                       reference_steps=10,
+                      symmetrized_defect::Bool=false,
                       rows=8)
     tab = zeros(Float64, rows, 5)
 
@@ -439,7 +468,9 @@ function local_orders_est(H::TimeDependentMatrix,
     println("             dt         err      p       err_est      p")
     println("--------------------------------------------------------")
     for row=1:rows
-        step_estimated!(psi, psi_est, H, t0, dt1, scheme, wsp, iwsp)
+        step_estimated!(psi, psi_est, H, t0, dt1, scheme,
+                        symmetrized_defect=symmetrized_defect,
+                        wsp, iwsp)
         psi_ref = copy(wf_save_initial_value)
         dt1_ref = dt1/reference_steps
         for k=1:reference_steps
