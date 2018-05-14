@@ -106,7 +106,8 @@ function norm(H::RosenZenerState, p=2, approx::Bool=false)
     abs(H.c1)*H.H.norm_H1 + abs(H.c2)*H.H.norm_H2
 end
 
-full(H::RosenZenerState) = full(H.c1*(H.H.H1) + H.c2*(H.H.H2))
+full(H::RosenZenerState) = (H.matrix_times_minus_i?-1im*full(H.c1*(H.H.H1) + H.c2*(H.H.H2))
+                                                  :     full(H.c1*(H.H.H1) + H.c2*(H.H.H2)))
 
 
 

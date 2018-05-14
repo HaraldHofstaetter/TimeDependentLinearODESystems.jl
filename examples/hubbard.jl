@@ -366,6 +366,8 @@ function double_occupation(H::Hubbard, psi::Union{Array{Complex{Float64},1},Arra
     r
 end
 
+double_occupation(H::HubbardState, psi::Union{Array{Complex{Float64},1},Array{Float64,1}}) = double_occupation(H.H, psi)
+
 import Base.LinAlg: A_mul_B!, issymmetric, ishermitian, checksquare
 import Base: eltype, size, norm
 
@@ -419,10 +421,7 @@ function energy(H::HubbardState, psi::Union{Array{Complex{Float64},1},Array{Floa
     real(dot(psi,psi1))
 end
 
-function norm(H::HubbardState, p::Real=2; approx::Bool=false)
-    if approx
-        return H.H.norm0
-    end
+function norm(H::HubbardState, p::Real=2)
     if p==2
         throw(ArgumentError("2-norm not implemented for Hubbard. Try norm(H, p) where p=1 or Inf."))
     elseif !(p==1 || p==Inf)
@@ -443,5 +442,21 @@ function norm(H::HubbardState, p::Real=2; approx::Bool=false)
     s[:] *= abs(H.fac_offdiag) 
     s[:] += abs(H.fac_diag)*abs.(H.H.H_diag)
     maximum(s)
+end
+
+TimeDependentLinearODESystems.norm0(H::HubbardState)  = H.H.norm0
+
+function full(H::HubbardState)
+    fac_symm = real(H.fac_offdiag)
+    fac_anti = imag(H.fac_offdiag)
+
+    if H.H.store_full_matrices
+        return (H.matrix_times_minus_i?-1im:1)*(
+            diagm(H.fac_diag*(H.H.H_diag)) + fac_symm*(H.H.H_upper_symm) + (1im*fac_anti)*(H.H.H_upper_anti)) 
+    else
+        return (H.matrix_times_minus_i?-1im:1)*(
+            diagm(H.fac_diag*(H.H.H_diag)) + fac_symm*(H.H.H_upper_symm + H.H.H_upper_symm') +  
+            (1im*fac_anti)*(H.H.H_upper_anti - H.H.H_upper_anti'))
+    end
 end
 
