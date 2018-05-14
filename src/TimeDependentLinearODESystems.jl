@@ -3,7 +3,7 @@ module TimeDependentLinearODESystems
 export TimeDependentMatrixState, TimeDependentSchroedingerMatrixState
 export TimeDependentMatrix, TimeDependentSchroedingerMatrix
 export CommutatorFree_Scheme
-export CF2, CF4, CF4o, CF6
+export CF2, CF4, CF4o, CF6, DoPri45
 export get_order, number_of_exponentials
 export load_example
 export EquidistantTimeStepper, local_orders, local_orders_est
@@ -26,11 +26,6 @@ using FExpokit
 import FExpokit: get_lwsp_liwsp_expv 
 
 get_lwsp_liwsp_expv(H, scheme, m::Integer=30) = get_lwsp_liwsp_expv(size(H, 2), m)
-
-const for_expv = 0
-const for_Gamma = 1
-const for_Gamma_d = 2
-const for_Gamma_d_symmetrized = 3
 
 
 struct CommutatorFreeScheme
@@ -362,6 +357,56 @@ function step_estimated!{T<:Union{Array{Float64,1},Array{Complex{Float64},1}}}(
 end
 
 
+abstract type DoPri45 end
+
+get_lwsp_liwsp_expv(H, scheme::Type{DoPri45}, m::Integer=30) = (8*size(H,2), 0)
+
+get_order(::Type{DoPri45}) = 4
+
+function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
+                 H::TimeDependentMatrix, 
+                 t::Real, dt::Real,
+                 scheme::Type{DoPri45},
+                 wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
+                 symmetrized_defect::Bool=false)
+      c = [0.0 1/5 3/10 4/5 8/9 1.0 1.0]
+      A = [0.0         0.0        0.0         0.0      0.0          0.0     0.0
+           1/5         0.0        0.0         0.0      0.0          0.0     0.0
+           3/40        9/40       0.0         0.0      0.0          0.0     0.0
+           44/45      -56/15      32/9        0.0      0.0          0.0     0.0
+           19372/6561 -25360/2187 64448/6561 -212/729  0.0          0.0     0.0
+           9017/3168  -355/33     46732/5247  49/176  -5103/18656   0.0     0.0
+           35/384      0.0        500/1113    125/192 -2187/6784    11/84   0.0]
+     # e = [51279/57600 0.0        7571/16695  393/640 -92097/339200 187/2100 1/40]
+       e = [71/57600    0.0       -71/16695    71/1920  -17253/339200 22/525 -1/40]    
+      n = size(H, 2)
+      K = [unsafe_wrap(Array, pointer(wsp, (j-1)*n+1), n, false) for j=1:8]
+      s = K[8]
+      for l=1:7
+          s[:] = psi
+          for j=1:l-1
+              if A[l,j]!=0.0
+                  s[:] += (dt*A[l,j])*K[j][:]
+              end
+          end
+          H1 = H(t+c[l]*dt)
+          A_mul_B!(K[l], H1, s)
+      end
+      psi[:] = s[:]
+      s[:] = 0.0
+      for j=1:7
+          if e[j]!=0.0
+              s[:] += (dt*e[j])*K[j][:]
+          end
+      end
+      H1 = H(t+dt)
+      A_mul_B!(psi_est, H1, s)
+      #psi_est[:] -= psi[:]
+      # TODO: K[7] can be reused as K[1] for the next step (FSAL, first same as last)
+end
+
+
+
 struct EquidistantTimeStepper
     H::TimeDependentMatrix
     psi::Array{Complex{Float64},1}
@@ -406,7 +451,10 @@ function local_orders(H::TimeDependentMatrix,
     tab = zeros(Float64, rows, 3)
 
     # allocate workspace
-    lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
+    lwsp1, liwsp1 = get_lwsp_liwsp_expv(H, scheme)  
+    lwsp2, liwsp2 = get_lwsp_liwsp_expv(H, reference_scheme)  
+    lwsp = max(lwsp1, lwsp2)
+    liwsp = max(liwsp1, liwsp2)
     wsp = zeros(Complex{Float64}, lwsp)
     iwsp = zeros(Int32, liwsp) 
 
@@ -454,7 +502,10 @@ function local_orders_est(H::TimeDependentMatrix,
     tab = zeros(Float64, rows, 5)
 
     # allocate workspace
-    lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
+    lwsp1, liwsp1 = get_lwsp_liwsp_expv(H, scheme)  
+    lwsp2, liwsp2 = get_lwsp_liwsp_expv(H, reference_scheme)  
+    lwsp = max(lwsp1, lwsp2)
+    liwsp = max(liwsp1, liwsp2)
     wsp = zeros(Complex{Float64}, lwsp)
     iwsp = zeros(Int32, liwsp) 
 

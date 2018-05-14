@@ -41,7 +41,7 @@ end
 
 
 function (H::RosenZener)(t::Real; compute_derivative::Bool=false,
-                                  matrix_times_minus_i::Bool=false)
+                                  matrix_times_minus_i::Bool=true)
     if  compute_derivative
         c1 = H.V0*(-H.omega*sin(H.omega*t)*cosh(t/H.T0)-cos(H.omega*t)/H.T0*sinh(t/H.T0))/cosh(t/H.T0)^2
         c2 = H.V0*(-H.omega*cos(H.omega*t)*cosh(t/H.T0)-sin(H.omega*t)/H.T0*sinh(t/H.T0))/cosh(t/H.T0)^2
@@ -55,7 +55,7 @@ end
 
 
 function (H::RosenZener)(t::Vector{Float64}, c::Vector{Float64};
-                  compute_derivative::Bool=false, matrix_times_minus_i::Bool=false)
+                  compute_derivative::Bool=false, matrix_times_minus_i::Bool=true)
     n = length(t)
     @assert n==length(c)&&n>0 "t, c must be vectors of same length>1"
     if  compute_derivative

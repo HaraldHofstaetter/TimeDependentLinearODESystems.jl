@@ -38,7 +38,7 @@ mutable struct HubbardState <: TimeDependentSchroedingerMatrixState
 end
 
 function (H::Hubbard)(t::Real; compute_derivative::Bool=false,
-                               matrix_times_minus_i::Bool=false)
+                               matrix_times_minus_i::Bool=true)
     if  compute_derivative
         fac_diag = 0.0
         fac_offdiag = H.fd(t)
@@ -52,7 +52,7 @@ end
 
 function (H::Hubbard)(t::Vector{Float64}, c::Vector{Float64};
                       compute_derivative::Bool=false,
-                      matrix_times_minus_i::Bool=false)
+                      matrix_times_minus_i::Bool=true)
     n = length(t)
     @assert n==length(c)&&n>0 "t, c must be vectors of same length>1"
     if  compute_derivative
