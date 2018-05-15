@@ -420,6 +420,7 @@ struct Magnus4State <: TimeDependentMatrixState
     H1::TimeDependentMatrixState
     H2::TimeDependentMatrixState
     f_dt::Float64
+    s::Array{Complex{Float64},1}
 end
 
 #struct Magnus4DerivativeState <: TimeDependentSchroedingerMatrixState
@@ -455,13 +456,13 @@ end
 
 
 function step!(psi::Array{Complex{Float64},1}, H::TimeDependentSchroedingerMatrix, 
-               t::Real, dt::Real, scheme::Magnus4,
+               t::Real, dt::Real, scheme::Type{Magnus4},
                wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1})
-    c1 = f(t+dt*(1/2-sqrt(3)/6))
-    c2 = f(t+dt*(1/2+sqrt(3)/6))
+    c1 = 1/2-sqrt(3)/6
+    c2 = 1/2+sqrt(3)/6
     H1 = H(t + c1*dt, matrix_times_minus_i=false)
     H2 = H(t + c2*dt, matrix_times_minus_i=false)
-    f_dt = sqrt(3)/12
+    f_dt = sqrt(3)/12*dt
     s = similar(psi) # TODO: take somthing from wsp
     HH = Magnus4State(H1, H2, f_dt, s)
     expv!(psi, dt, HH, psi, anorm=norm0(H1), 
