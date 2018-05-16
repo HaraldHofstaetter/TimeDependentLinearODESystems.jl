@@ -419,7 +419,7 @@ number_of_exponentials(::Type{Magnus4}) = 1
 struct Magnus4State <: TimeDependentMatrixState
     H1::TimeDependentMatrixState
     H2::TimeDependentMatrixState
-    f_dt::Float64
+    f_dt::Complex{Float64}
     s::Array{Complex{Float64},1}
 end
 
@@ -447,11 +447,11 @@ function A_mul_B!(Y, H::Magnus4State, B)
     A_mul_B!(X, H.H1, B)
     Y[:] = 0.5*X[:]
     A_mul_B!(X, H.H2, X)
-    Y[:] += H.f_dt*X[:]
+    Y[:] -= H.f_dt*X[:]
     A_mul_B!(X, H.H2, B)
     Y[:] += 0.5*X[:]
     A_mul_B!(X, H.H1, X)
-    Y[:] -= H.f_dt*X[:]
+    Y[:] += H.f_dt*X[:]
 end
 
 
@@ -462,7 +462,7 @@ function step!(psi::Array{Complex{Float64},1}, H::TimeDependentSchroedingerMatri
     c2 = 1/2+sqrt(3)/6
     H1 = H(t + c1*dt, matrix_times_minus_i=false)
     H2 = H(t + c2*dt, matrix_times_minus_i=false)
-    f_dt = sqrt(3)/12*dt
+    f_dt = sqrt(3)/12*dt*1im
     s = similar(psi) # TODO: take somthing from wsp
     HH = Magnus4State(H1, H2, f_dt, s)
     expv!(psi, dt, HH, psi, anorm=norm0(H1), 
