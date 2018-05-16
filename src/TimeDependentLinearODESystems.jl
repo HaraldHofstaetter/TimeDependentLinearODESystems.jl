@@ -423,14 +423,18 @@ struct Magnus4State <: TimeDependentMatrixState
     s::Array{Complex{Float64},1}
 end
 
-#struct Magnus4DerivativeState <: TimeDependentSchroedingerMatrixState
-#    H1::TimeDependentSchroedingerMatrixState
-#    H2::TimeDependentSchroedingerMatrixState
-#    Hd1::TimeDependentSchroedingerMatrixState
-#    Hd2::TimeDependentSchroedingerMatrixState
-#    dt::Float64
-#    s::Array{Complex{Float64},1}
-#end
+struct Magnus4DerivativeState <: TimeDependentMatrixState
+    H1::TimeDependentSchroedingerMatrixState
+    H2::TimeDependentSchroedingerMatrixState
+    H1d::TimeDependentSchroedingerMatrixState
+    H2d::TimeDependentSchroedingerMatrixState
+    dt::Float64
+    f::Complex{Float64}
+    c1::Float64
+    c2::Float64
+    s::Array{Complex{Float64},1}
+    s1::Array{Complex{Float64},1}
+end
 
 import Base.LinAlg: A_mul_B!, issymmetric, ishermitian, checksquare
 import Base: eltype, size, norm, full
@@ -442,32 +446,114 @@ issymmetric(H::Magnus4State) = issymmetric(H.H1) # TODO: check
 ishermitian(H::Magnus4State) = ishermitian(H.H1) # TODO: check 
 checksquare(H::Magnus4State) = checksquare(H.H1)
 
+size(H::Magnus4DerivativeState) = size(H.H1)
+size(H::Magnus4DerivativeState, dim::Int) = size(H.H1, dim) 
+eltype(H::Magnus4DerivativeState) = eltype(H.H1) 
+issymmetric(H::Magnus4DerivativeState) = issymmetric(H.H1) # TODO: check 
+ishermitian(H::Magnus4DerivativeState) = ishermitian(H.H1) # TODO: check 
+checksquare(H::Magnus4DerivativeState) = checksquare(H.H1)
+
+
 function A_mul_B!(Y, H::Magnus4State, B)
     X = H.s 
     A_mul_B!(X, H.H1, B)
     Y[:] = 0.5*X[:]
     A_mul_B!(X, H.H2, X)
-    Y[:] -= H.f_dt*X[:]
+    Y[:] += H.f_dt*X[:]
     A_mul_B!(X, H.H2, B)
     Y[:] += 0.5*X[:]
     A_mul_B!(X, H.H1, X)
-    Y[:] += H.f_dt*X[:]
+    Y[:] -= H.f_dt*X[:]
 end
+
+function A_mul_B!(Y, H::Magnus4DerivativeState, B)
+    X = H.s 
+    X1 = H.s1
+    A_mul_B!(X, H.H1d, B)
+    Y[:] = (0.5*H.c1)*X[:]
+    A_mul_B!(X, H.H2, B)
+    Y[:] += (H.f*H.c1*H.dt)*X[:]
+
+    A_mul_B!(X, H.H2d, B)
+    Y[:] += (0.5*H.c2)*X[:]
+    A_mul_B!(X, H.H1, B)
+    Y[:] -= (H.f*H.c2*H.dt)*X[:]
+
+    A_mul_B!(X, H.H1, B)
+    A_mul_B!(X1, H.H2, X)
+    Y[:] += H.f*X1[:]
+    A_mul_B!(X1, H.H2d, X)
+    Y[:] += (H.f*H.c2*H.dt)*X[:]
+
+    A_mul_B!(X, H.H2, B)
+    A_mul_B!(X1, H.H1, X)
+    Y[:] -= H.f*X[:]
+    A_mul_B!(X1, H.H1d, X)
+    Y[:] -= (H.f*H.c1*H.dt)*X[:]
+end
+
 
 
 function step!(psi::Array{Complex{Float64},1}, H::TimeDependentSchroedingerMatrix, 
                t::Real, dt::Real, scheme::Type{Magnus4},
                wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1})
-    c1 = 1/2-sqrt(3)/6
-    c2 = 1/2+sqrt(3)/6
+    sqrt3 = sqrt(3)
+    c1 = 1/2-sqrt3/6
+    c2 = 1/2+sqrt3/6
     H1 = H(t + c1*dt, matrix_times_minus_i=false)
     H2 = H(t + c2*dt, matrix_times_minus_i=false)
-    f_dt = sqrt(3)/12*dt*1im
+    f = sqrt3/12
     s = similar(psi) # TODO: take somthing from wsp
-    HH = Magnus4State(H1, H2, f_dt, s)
+    HH = Magnus4State(H1, H2, -1im*f*dt, s)
     expv!(psi, dt, HH, psi, anorm=norm0(H1), 
          matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
 end  
+
+
+function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
+                 H::TimeDependentSchroedingerMatrix, 
+                 t::Real, dt::Real,
+                 scheme::Type{Magnus4},
+                 wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
+                 symmetrized_defect::Bool=false) 
+    n = size(H, 2)
+    s = unsafe_wrap(Array, pointer(wsp, 1), n, false)
+    s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, false)
+    s2 = unsafe_wrap(Array, pointer(wsp, 2*n+1), n, false)
+    
+    sqrt3 = sqrt(3)
+    c1 = 1/2-sqrt3/6
+    c2 = 1/2+sqrt3/6
+    f = sqrt3/12
+    s3 = similar(psi) # TODO: take somthing from wsp
+    s4 = similar(psi) # TODO: take somthing from wsp
+
+    H1 = H(t + c1*dt, matrix_times_minus_i=false)
+    H2 = H(t + c2*dt, matrix_times_minus_i=false)
+    H1d = H(t + c1*dt, matrix_times_minus_i=false, compute_derivative=true)
+    H2d = H(t + c2*dt, matrix_times_minus_i=false, compute_derivative=true)
+    HH = Magnus4State(H1, H2, -1im*f*dt, s3)
+    HHd = Magnus4DerivativeState(H1, H2, H1d, H2d, dt, -1im*f, c1, c2, s3, s4)
+
+    expv!(psi, dt, HH, psi, anorm=norm0(H1), 
+         matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+
+    H1 = H(t + c1*dt, matrix_times_minus_i=true)
+    H2 = H(t + c2*dt, matrix_times_minus_i=true)
+    H1d = H(t + c1*dt, matrix_times_minus_i=true, compute_derivative=true)
+    H2d = H(t + c2*dt, matrix_times_minus_i=true, compute_derivative=true)
+    HH = Magnus4State(H1, H2, f*dt, s3)
+    HHd = Magnus4DerivativeState(H1, H2, H1d, H2d, dt, f, c1, c2, s3, s4)
+
+    Gamma!(psi_est, HH, HHd, psi, 4, dt, s1, s2)
+
+    H1 = H(t + dt, matrix_times_minus_i=true)
+    A_mul_B!(s, H1, psi)
+
+    psi_est[:] -= s[:]
+    psi_est[:] *= dt/5
+end
+
 
 
 struct EquidistantTimeStepper
