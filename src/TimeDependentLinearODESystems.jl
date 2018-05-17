@@ -469,27 +469,28 @@ end
 function A_mul_B!(Y, H::Magnus4DerivativeState, B)
     X = H.s 
     X1 = H.s1
+
     A_mul_B!(X, H.H1d, B)
     Y[:] = (0.5*H.c1)*X[:]
-    A_mul_B!(X, H.H2, B)
-    Y[:] += (H.f*H.c1*H.dt)*X[:]
+    A_mul_B!(X, H.H2, X)
+    Y[:] -= (H.f*H.c1*H.dt)*X[:]
 
     A_mul_B!(X, H.H2d, B)
-    Y[:] += (0.5*H.c2)*X[:]
-    A_mul_B!(X, H.H1, B)
-    Y[:] -= (H.f*H.c2*H.dt)*X[:]
+    Y[:] += (0.5*H.c2)*X[:] 
+    A_mul_B!(X, H.H1, X)
+    Y[:] += (H.f*H.c2*H.dt)*X[:]
 
     A_mul_B!(X, H.H1, B)
     A_mul_B!(X1, H.H2, X)
     Y[:] += H.f*X1[:]
     A_mul_B!(X1, H.H2d, X)
-    Y[:] += (H.f*H.c2*H.dt)*X[:]
+    Y[:] -= (H.f*H.c2*H.dt)*X1[:]
 
     A_mul_B!(X, H.H2, B)
     A_mul_B!(X1, H.H1, X)
-    Y[:] -= H.f*X[:]
+    Y[:] -= H.f*X1[:]
     A_mul_B!(X1, H.H1d, X)
-    Y[:] -= (H.f*H.c1*H.dt)*X[:]
+    Y[:] += (H.f*H.c1*H.dt)*X1[:]
 end
 
 
@@ -530,10 +531,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
 
     H1 = H(t + c1*dt, matrix_times_minus_i=false)
     H2 = H(t + c2*dt, matrix_times_minus_i=false)
-    H1d = H(t + c1*dt, matrix_times_minus_i=false, compute_derivative=true)
-    H2d = H(t + c2*dt, matrix_times_minus_i=false, compute_derivative=true)
     HH = Magnus4State(H1, H2, -1im*f*dt, s3)
-    HHd = Magnus4DerivativeState(H1, H2, H1d, H2d, dt, -1im*f, c1, c2, s3, s4)
 
     expv!(psi, dt, HH, psi, anorm=norm0(H1), 
          matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
