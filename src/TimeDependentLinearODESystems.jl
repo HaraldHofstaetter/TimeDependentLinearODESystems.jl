@@ -64,29 +64,39 @@ CF6 = CommutatorFreeScheme(
 
 
 norm0(H::T) where {T<:TimeDependentMatrixState} = norm(H, 1)
-full(H::T) where {T<:TimeDependentMatrixState} = 
+#full(H::T) where {T<:TimeDependentMatrixState} = 
 
 
 function step!(psi::Union{Array{Float64,1},Array{Complex{Float64},1}}, 
                H::TimeDependentMatrix, 
                t::Real, dt::Real, scheme::CommutatorFreeScheme,
-               wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1}) #TODO wsp also Array{Float64, 1} !?!?
+               wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1}; #TODO wsp also Array{Float64, 1} !?!?
+               use_expm::Bool=false)
     tt = t+dt*scheme.c
     for j=1:number_of_exponentials(scheme)
         H1 = H(tt, scheme.A[j,:])
-        expv!(psi, dt, H1, psi, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+        if use_expm
+            psi[:] = expm(dt*full(H1))*psi
+        else
+            expv!(psi, dt, H1, psi, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+        end
     end
 end  
 
 
 function step!(psi::Array{Complex{Float64},1}, H::TimeDependentSchroedingerMatrix, 
                t::Real, dt::Real, scheme::CommutatorFreeScheme,
-               wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1})
+               wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
+               use_expm::Bool=false)
     tt = t+dt*scheme.c
     for j=1:number_of_exponentials(scheme)
         H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=false)
-        expv!(psi, dt, H1, psi, anorm=norm0(H1), 
-              matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+        if use_expm
+            psi[:] = expm(-1im*dt*full(H1))*psi
+        else
+            expv!(psi, dt, H1, psi, anorm=norm0(H1), 
+                  matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+        end
     end
 end  
 
@@ -224,7 +234,8 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
                  t::Real, dt::Real,
                  scheme::CommutatorFreeScheme,
                  wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
-                 symmetrized_defect::Bool=false) 
+                 symmetrized_defect::Bool=false, 
+                 use_expm::Bool=false)
     n = size(H, 2)
     s = unsafe_wrap(Array, pointer(wsp, 1), n, false)
     s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, false)
@@ -240,15 +251,23 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         psi_est[:] *= -0.5
         
         H1 = H(tt, scheme.A[1,:], matrix_times_minus_i=false)
-        expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), 
-              matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+        if use_expm
+            psi_est[:] = expm(-1im*dt*full(H1))*psi_est
+        else
+            expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), 
+                  matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+        end
     else
         psi_est[:] = 0.0
     end
     
     H1 = H(tt, scheme.A[1,:], matrix_times_minus_i=false)
-    expv!(psi, dt, H1, psi, anorm=norm0(H1),
-          matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+    if use_expm
+        psi[:] = expm(-1im*dt*full(H1))*psi
+    else
+        expv!(psi, dt, H1, psi, anorm=norm0(H1),
+              matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+    end
 
     H1 = H(tt, scheme.A[1,:], matrix_times_minus_i=true)
     if symmetrized_defect
@@ -262,11 +281,15 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     for j=2:number_of_exponentials(scheme)
 
         H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=false)
-        expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), 
-              matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
-
-        expv!(psi, dt, H1, psi, anorm=norm0(H1),
-              matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+        if use_expm
+            psi_est[:] = expm(-1im*dt*full(H1))*psi_est
+            psi[:] = expm(-1im*dt*full(H1))*psi
+        else
+            expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), 
+                  matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+            expv!(psi, dt, H1, psi, anorm=norm0(H1),
+                  matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+        end
     
         H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=true)
         if symmetrized_defect
@@ -299,8 +322,9 @@ function step_estimated!{T<:Union{Array{Float64,1},Array{Complex{Float64},1}}}(
                          H::TimeDependentMatrix, 
                          t::Real, dt::Real,
                          scheme::CommutatorFreeScheme, 
-                         wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1}) #TODO wsp also Array{Float64, 1} !?!?
-
+                         wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1}; #TODO wsp also Array{Float64, 1} !?!?
+                         symmetrized_defect::Bool=false, 
+                         use_expm::Bool=false)
     n = size(H, 2)
     s = unsafe_wrap(Array,  pointer(wsp, 1), n, false)
     s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, false)
@@ -316,13 +340,21 @@ function step_estimated!{T<:Union{Array{Float64,1},Array{Complex{Float64},1}}}(
         psi_est[:] *= -0.5
         
         H1 = H(tt, scheme.A[1,:])
-        expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+        if use_expm
+            psi_est[:] = expm(dt*full(H1))*psi_est
+        else
+            expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+        end
     else
         psi_est[:] = 0.0
     end
     
     H1 = H(tt, scheme.A[1,:])
-    expv!(psi, dt, H1, psi, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+    if use_expm
+        psi[:] = expm(dt*full(H1))*psi
+    else
+        expv!(psi, dt, H1, psi, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+    end
 
     if symmetrized_defect
         H1d = H(tt, (scheme.c-0.5).*scheme.A[1,:], compute_derivative=true)
@@ -335,9 +367,13 @@ function step_estimated!{T<:Union{Array{Float64,1},Array{Complex{Float64},1}}}(
     for j=2:number_of_exponentials(scheme)
 
         H1 = H(tt, scheme.A[j,:])
-        expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
-
-        expv!(psi, dt, H1, psi, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+        if use_expm
+            psi_est[:] = expm(dt*full(H1))*psi_est
+            psi[:] = expm(dt*full(H1))*psi
+        else            
+            expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+            expv!(psi, dt, H1, psi, anorm=norm0(H1), wsp=wsp, iwsp=iwsp)
+        end
 
         if symmetrized_defect
             H1d = H(tt, (scheme.c-0.5).*scheme.A[j,:], compute_derivative=true)
@@ -373,7 +409,8 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
                  t::Real, dt::Real,
                  scheme::Type{DoPri45},
                  wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
-                 symmetrized_defect::Bool=false)
+                 symmetrized_defect::Bool=false,
+                 use_expm::Bool=false)
       c = [0.0 1/5 3/10 4/5 8/9 1.0 1.0]
       A = [0.0         0.0        0.0         0.0      0.0          0.0     0.0
            1/5         0.0        0.0         0.0      0.0          0.0     0.0
@@ -471,6 +508,12 @@ function A_mul_B!(Y, H::Magnus4State, B)
     Y[:] -= H.f_dt*X[:]
 end
 
+function full(H::Magnus4State) 
+    H1 = full(H.H1)
+    H2 = full(H.H2)
+    0.5*(H1+H2)-H.f_dt*(H1*H2-H2*H1)
+end
+
 function A_mul_B!(Y, H::Magnus4DerivativeState, B)
     X = H.s 
     X1 = H.s1
@@ -502,7 +545,8 @@ end
 
 function step!(psi::Array{Complex{Float64},1}, H::TimeDependentSchroedingerMatrix, 
                t::Real, dt::Real, scheme::Type{Magnus4},
-               wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1})
+               wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
+               use_expm::Bool=false)
     sqrt3 = sqrt(3)
     c1 = 1/2-sqrt3/6
     c2 = 1/2+sqrt3/6
@@ -511,8 +555,12 @@ function step!(psi::Array{Complex{Float64},1}, H::TimeDependentSchroedingerMatri
     f = sqrt3/12
     s = similar(psi) # TODO: take somthing from wsp
     HH = Magnus4State(H1, H2, -1im*f*dt, s)
-    expv!(psi, dt, HH, psi, anorm=norm0(H1), 
-         matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+    if use_expm
+        psi[:] = expm(-1im*dt*full(HH))*psi
+    else
+        expv!(psi, dt, HH, psi, anorm=norm0(H1), 
+             matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+    end
 end  
 
 
@@ -521,7 +569,8 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
                  t::Real, dt::Real,
                  scheme::Type{Magnus4},
                  wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
-                 symmetrized_defect::Bool=false) 
+                 symmetrized_defect::Bool=false, 
+                 use_expm::Bool=false)
     n = size(H, 2)
     s = unsafe_wrap(Array, pointer(wsp, 1), n, false)
     s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, false)
@@ -540,8 +589,12 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     H2 = H(t + c2*dt, matrix_times_minus_i=false)
     HH = Magnus4State(H1, H2, -1im*f*dt, s3)
 
-    expv!(psi, dt, HH, psi, anorm=norm0(H1), 
-         matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+    if use_expm
+        psi[:] = expm(-1im*dt*full(HH))*psi
+    else
+        expv!(psi, dt, HH, psi, anorm=norm0(H1), 
+             matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+    end
 
     H1 = H(t + c1*dt, matrix_times_minus_i=true)
     H2 = H(t + c2*dt, matrix_times_minus_i=true)
@@ -601,7 +654,8 @@ function local_orders(H::TimeDependentMatrix,
                       psi::Array{Complex{Float64},1}, t0::Real, dt::Real; 
                       scheme=CF2, reference_scheme=scheme, 
                       reference_steps=10,
-                      rows=8)
+                      rows=8,
+                      use_expm::Bool=false)
     tab = zeros(Float64, rows, 3)
 
     # allocate workspace
@@ -620,11 +674,11 @@ function local_orders(H::TimeDependentMatrix,
     println("             dt         err      p")
     println("-----------------------------------")
     for row=1:rows
-        step!(psi, H, t0, dt1, scheme, wsp, iwsp)
+        step!(psi, H, t0, dt1, scheme, wsp, iwsp, use_expm=use_expm)
         psi_ref = copy(wf_save_initial_value)
         dt1_ref = dt1/reference_steps
         for k=1:reference_steps
-            step!(psi_ref, H, t0+(k-1)*dt1_ref, dt1_ref, reference_scheme, wsp, iwsp)
+            step!(psi_ref, H, t0+(k-1)*dt1_ref, dt1_ref, reference_scheme, wsp, iwsp, use_expm=use_expm)
         end    
         err = norm(psi-psi_ref)
         if (row==1) 
@@ -652,7 +706,8 @@ function local_orders_est(H::TimeDependentMatrix,
                       scheme=CF2_defectbased, reference_scheme=CF4, 
                       reference_steps=10,
                       symmetrized_defect::Bool=false,
-                      rows=8)
+                      rows=8,
+                      use_expm::Bool=false)
     tab = zeros(Float64, rows, 5)
 
     # allocate workspace
@@ -674,12 +729,13 @@ function local_orders_est(H::TimeDependentMatrix,
     println("--------------------------------------------------------")
     for row=1:rows
         step_estimated!(psi, psi_est, H, t0, dt1, scheme,
+                        wsp, iwsp,
                         symmetrized_defect=symmetrized_defect,
-                        wsp, iwsp)
+                        use_expm=use_expm)
         psi_ref = copy(wf_save_initial_value)
         dt1_ref = dt1/reference_steps
         for k=1:reference_steps
-            step!(psi_ref, H, t0+(k-1)*dt1_ref, dt1_ref, reference_scheme, wsp, iwsp)
+            step!(psi_ref, H, t0+(k-1)*dt1_ref, dt1_ref, reference_scheme, wsp, iwsp, use_expm=use_expm)
         end    
         err = norm(psi-psi_ref)
         err_est = norm(psi-psi_ref-psi_est)
