@@ -93,124 +93,125 @@ end
 function Gamma!(r::Vector{Complex{Float64}},
                 H::TimeDependentMatrixState, Hd::TimeDependentMatrixState,
                 u::Vector{Complex{Float64}}, p::Int, dt::Float64, 
-                s1::Vector{Complex{Float64}}, s2::Vector{Complex{Float64}})
+                s1::Vector{Complex{Float64}}, s2::Vector{Complex{Float64}},
+                s1a::Vector{Complex{Float64}}, s2a::Vector{Complex{Float64}})
+    #s2=B*u
+    A_mul_B!(s2, H, u)
+    r[:] = s2[:] 
     if p>=1
         #s1=A*u
         A_mul_B!(s1, Hd, u)
-        r[:] = dt*s1[:] 
+        r[:] += dt*s1[:] 
     end
     if p>=2
         #s1=B*s1=BAu
-        A_mul_B!(s1, H, s1)
-        r[:] += (dt^2/2)*s1[:] 
+        A_mul_B!(s1a, H, s1)
+        r[:] += (dt^2/2)*s1a[:] 
     end
     if p>=3
         #s1=B*s1=BBAu
-        A_mul_B!(s1, H, s1)
+        A_mul_B!(s1, H, s1a)
         r[:] += (dt^3/6)*s1[:] 
     end
     if p>=4
         #s1=B*s1=BBBAu
-        A_mul_B!(s1, H, s1)
-        r[:] += (dt^4/24)*s1[:] 
+        A_mul_B!(s1a, H, s1)
+        r[:] += (dt^4/24)*s1a[:] 
     end
     if p>=5
         #s1=B*s1=BBBBAu
-        A_mul_B!(s1, H, s1)
+        A_mul_B!(s1, H, s1a)
         r[:] += (dt^5/120)*s1[:] 
     end
     if p>=6
         #s1=B*s1=BBBBBAu
-        A_mul_B!(s1, H, s1)
-        r[:] += (dt^6/720)*s1[:] 
+        A_mul_B!(s1a, H, s1)
+        r[:] += (dt^6/720)*s1a[:] 
     end
 
     if p>=2
-        #s2=B*u
-        A_mul_B!(s2, H, u)
-        r[:] += s2[:] 
         #s1=A*s2=ABu
         A_mul_B!(s1, Hd, s2)
         r[:] -= (dt^2/2)*s1[:] 
     end
     if p>=3
         #s1=B*s1=BABu
-        A_mul_B!(s1, H, s1)
-        r[:] -= (dt^3/3)*s1[:] 
+        A_mul_B!(s1a, H, s1)
+        r[:] -= (dt^3/3)*s1a[:] 
     end
     if p>=4
         #s1=B*s1=BBABu
-        A_mul_B!(s1, H, s1)
+        A_mul_B!(s1, H, s1a)
         r[:] -= (dt^4/8)*s1[:] 
     end
     if p>=5
         #s1=B*s1=BBBABu
-        A_mul_B!(s1, H, s1)
-        r[:] -= (dt^5/30)*s1[:] 
+        A_mul_B!(s1a, H, s1)
+        r[:] -= (dt^5/30)*s1a[:] 
     end
     if p>=6
         #s1=B*s1=BBBBABu
-        A_mul_B!(s1, H, s1)
+        A_mul_B!(s1, H, s1a)
         r[:] -= (dt^6/144)*s1[:] 
     end
 
     if p>=3
         #s2=B*s2=BBu
-        A_mul_B!(s2, H, s2)
+        A_mul_B!(s2a, H, s2)
         #s1=A*s2=ABBu
-        A_mul_B!(s1, Hd, s2)
+        A_mul_B!(s1, Hd, s2a)
         r[:] += (dt^3/6)*s1
     end
     if p>=4
         #s1=B*s1=BABBu
-        A_mul_B!(s1, H, s1)
-        r[:] += (dt^4/8)*s1
+        A_mul_B!(s1a, H, s1)
+        r[:] += (dt^4/8)*s1a
     end
     if p>=5
         #s1=B*s1=BBABBu
-        A_mul_B!(s1, H, s1)
+        A_mul_B!(s1, H, s1a)
         r[:] += (dt^5/20)*s1
     end
     if p>=6
         #s1=B*s1=BBBABBu
-        A_mul_B!(s1, H, s1)
-        r[:] += (dt^6/72)*s1
+        A_mul_B!(s1a, H, s1)
+        r[:] += (dt^6/72)*s1a
     end
 
     if p>=4
         #s2=B*s2=BBBu
-        A_mul_B!(s2, H, s2)
+        A_mul_B!(s2, H, s2a)
         #s1=A*s2=ABBBu
         ;  A_mul_B!(s1, Hd, s2)
         r[:] -= (dt^4/24)*s1
     end
     if p>=5
         #s1=B*s1=BABBBu
-        A_mul_B!(s1, H, s1)
-        r[:] -= (dt^5/30)*s1
+        A_mul_B!(s1a, H, s1)
+        r[:] -= (dt^5/30)*s1a
     end
     if p>=6
         #s1=B*s1=BBABBBu
-        A_mul_B!(s1, H, s1)
+        A_mul_B!(s1, H, s1a)
         r[:] -= (dt^6/72)*s1
     end
 
     if p>=5
         #s2=B*s2=BBBBu
-        A_mul_B!(s2, H, s2)
+        A_mul_B!(s2a, H, s2)
         #s1=A*s2=ABBBBu
-        A_mul_B!(s1, Hd, s2)
+        A_mul_B!(s1, Hd, s2a)
         r[:] += (dt^5/120)*s1
     end
     if p>=6
         #s1=B*s1=BABBBBu
-        A_mul_B!(s1, H, s1)
-        r[:] += (dt^6/144)*s1
+        A_mul_B!(s1a, H, s1)
+        r[:] += (dt^6/144)*s1a
     end
 
     if p>=6
         #s2=B*s2=BBBBBu
-        A_mul_B!(s2, H, s2)
+        A_mul_B!(s2, H, s2a)
         #s1=A*s2=ABBBBBu
         A_mul_B!(s1, Hd, s2)
         r[:] -= (dt^6/720)*s1
@@ -228,6 +229,8 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     s = unsafe_wrap(Array, pointer(wsp, 1), n, false)
     s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, false)
     s2 = unsafe_wrap(Array, pointer(wsp, 2*n+1), n, false)
+    s1a = unsafe_wrap(Array, pointer(wsp, 3*n+1), n, false)
+    s2a = unsafe_wrap(Array, pointer(wsp, 4*n+1), n, false)
 
     tt = t+dt*scheme.c
 
@@ -253,7 +256,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     else
         H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true, matrix_times_minus_i=true)
     end
-    Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2)
+    Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a)
     psi_est[:] += s[:]
 
     for j=2:number_of_exponentials(scheme)
@@ -271,7 +274,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         else
             H1d = H(tt, scheme.c.*scheme.A[j,:], compute_derivative=true, matrix_times_minus_i=true)
         end
-        Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2)
+        Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a)
 
         psi_est[:] += s[:]
 
@@ -302,6 +305,8 @@ function step_estimated!{T<:Union{Array{Float64,1},Array{Complex{Float64},1}}}(
     s = unsafe_wrap(Array,  pointer(wsp, 1), n, false)
     s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, false)
     s2 = unsafe_wrap(Array, pointer(wsp, 2*n+1), n, false)
+    s1a = unsafe_wrap(Array, pointer(wsp, 3*n+1), n, false)
+    s2a = unsafe_wrap(Array, pointer(wsp, 4*n+1), n, false)
 
     tt = t+dt*scheme.c
 
@@ -324,7 +329,7 @@ function step_estimated!{T<:Union{Array{Float64,1},Array{Complex{Float64},1}}}(
     else
         H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true)
     end
-    Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2)
+    Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a)
     psi_est[:] += s[:]
 
     for j=2:number_of_exponentials(scheme)
@@ -339,7 +344,7 @@ function step_estimated!{T<:Union{Array{Float64,1},Array{Complex{Float64},1}}}(
         else
             H1d = H(tt, scheme.c.*scheme.A[j,:], compute_derivative=true)
         end
-        Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2)
+        Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a)
 
         psi_est[:] += s[:]
 
@@ -473,24 +478,24 @@ function A_mul_B!(Y, H::Magnus4DerivativeState, B)
     A_mul_B!(X, H.H1d, B)
     Y[:] = (0.5*H.c1)*X[:]
     A_mul_B!(X, H.H2, X)
-    Y[:] -= (H.f*H.c1*H.dt)*X[:]
+    Y[:] += (H.f*H.c1*H.dt)*X[:]
 
     A_mul_B!(X, H.H2d, B)
     Y[:] += (0.5*H.c2)*X[:] 
     A_mul_B!(X, H.H1, X)
-    Y[:] += (H.f*H.c2*H.dt)*X[:]
+    Y[:] -= (H.f*H.c2*H.dt)*X[:]
 
     A_mul_B!(X, H.H1, B)
     A_mul_B!(X1, H.H2, X)
     Y[:] += H.f*X1[:]
     A_mul_B!(X1, H.H2d, X)
-    Y[:] -= (H.f*H.c2*H.dt)*X1[:]
+    Y[:] += (H.f*H.c2*H.dt)*X1[:]
 
     A_mul_B!(X, H.H2, B)
     A_mul_B!(X1, H.H1, X)
     Y[:] -= H.f*X1[:]
     A_mul_B!(X1, H.H1d, X)
-    Y[:] += (H.f*H.c1*H.dt)*X1[:]
+    Y[:] -= (H.f*H.c1*H.dt)*X1[:]
 end
 
 
@@ -521,6 +526,8 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     s = unsafe_wrap(Array, pointer(wsp, 1), n, false)
     s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, false)
     s2 = unsafe_wrap(Array, pointer(wsp, 2*n+1), n, false)
+    s1a = unsafe_wrap(Array, pointer(wsp, 3*n+1), n, false)
+    s2a = unsafe_wrap(Array, pointer(wsp, 4*n+1), n, false)
     
     sqrt3 = sqrt(3)
     c1 = 1/2-sqrt3/6
@@ -543,13 +550,13 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     HH = Magnus4State(H1, H2, f*dt, s3)
     HHd = Magnus4DerivativeState(H1, H2, H1d, H2d, dt, f, c1, c2, s3, s4)
 
-    Gamma!(psi_est, HH, HHd, psi, 4, dt, s1, s2)
+    Gamma!(psi_est, HH, HHd, psi, 4, dt, s1, s2, s1a, s2a)
 
     H1 = H(t + dt, matrix_times_minus_i=true)
     A_mul_B!(s, H1, psi)
 
     psi_est[:] -= s[:]
-    psi_est[:] *= dt/5
+    psi_est[:] *= (dt/5)
 end
 
 

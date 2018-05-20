@@ -43,8 +43,8 @@ end
 function (H::RosenZener)(t::Real; compute_derivative::Bool=false,
                                   matrix_times_minus_i::Bool=true)
     if  compute_derivative
-        c1 = H.V0*(-H.omega*sin(H.omega*t)*cosh(t/H.T0)-cos(H.omega*t)/H.T0*sinh(t/H.T0))/cosh(t/H.T0)^2
-        c2 = H.V0*(-H.omega*cos(H.omega*t)*cosh(t/H.T0)-sin(H.omega*t)/H.T0*sinh(t/H.T0))/cosh(t/H.T0)^2
+        c1 = -H.V0*H.omega*sin(H.omega*t)/cosh(t/H.T0)-H.V0*cos(H.omega*t)*sinh(t/H.T0)/(cosh(t/H.T0)^2*H.T0)
+        c2 = -H.V0*H.omega*cos(H.omega*t)/cosh(t/H.T0)+H.V0*sin(H.omega*t)*sinh(t/H.T0)/(cosh(t/H.T0)^2*H.T0)
     else
         c1 = H.V0*cos(H.omega*t)/cosh(t/H.T0)
         c2 = -H.V0*sin(H.omega*t)/cosh(t/H.T0)
@@ -59,10 +59,8 @@ function (H::RosenZener)(t::Vector{Float64}, c::Vector{Float64};
     n = length(t)
     @assert n==length(c)&&n>0 "t, c must be vectors of same length>1"
     if  compute_derivative
-        c1 = sum([c[j]*H.V0*(-H.omega*sin(H.omega*t[j])*cosh(t[j]/H.T0)-
-                   cos(H.omega*t)/H.T0*sinh(t[j]/H.T0))/cosh(t[j]/H.T0)^2 for j=1:n])
-        c2 = sum([c[j]*H.V0*(-H.omega*cos(H.omega*t[j])*cosh(t[j]/H.T0)-
-                   sin(H.omega*t)/H.T0*sinh(t[j]/H.T0))/cosh(t[j]/H.T0)^2 for j=1:n])
+        c1 = sum([c[j]*(-H.V0*H.omega*sin(H.omega*t[j])/cosh(t[j]/H.T0)-H.V0*cos(H.omega*t[j])*sinh(t[j]/H.T0)/(cosh(t[j]/H.T0)^2*H.T0)) for j=1:n])
+        c2 = sum([c[j]*(-H.V0*H.omega*cos(H.omega*t[j])/cosh(t[j]/H.T0)+H.V0*sin(H.omega*t[j])*sinh(t[j]/H.T0)/(cosh(t[j]/H.T0)^2*H.T0)) for j=1:n])
     else
         c1 = sum([c[j]*H.V0*cos(H.omega*t[j])/cosh(t[j]/H.T0) for j=1:n])
         c2 = sum([-c[j]*H.V0*sin(H.omega*t[j])/cosh(t[j]/H.T0) for j=1:n])
@@ -84,9 +82,9 @@ function A_mul_B!(Y, H::RosenZenerState, B)
 end
 
 
-size(H::RosenZener) = (H.H.d, H.H.d)
+size(H::RosenZener) = (H.d, H.d)
 size(H::RosenZener, dim::Int) = dim<1?error("arraysize: dimension out of range"):
-                                       (dim<3?H.H.d:1)
+                                       (dim<3?H.d:1)
 size(H::RosenZenerState) = size(H.H)
 size(H::RosenZenerState, dim::Int) = size(H.H, dim)
 
