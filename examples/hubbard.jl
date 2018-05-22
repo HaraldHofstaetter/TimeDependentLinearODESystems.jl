@@ -369,7 +369,7 @@ end
 double_occupation(H::HubbardState, psi::Union{Array{Complex{Float64},1},Array{Float64,1}}) = double_occupation(H.H, psi)
 
 import Base.LinAlg: A_mul_B!, issymmetric, ishermitian, checksquare
-import Base: eltype, size, norm
+import Base: eltype, size, norm, full
 
 
 function A_mul_B!(Y, H::HubbardState, B)
