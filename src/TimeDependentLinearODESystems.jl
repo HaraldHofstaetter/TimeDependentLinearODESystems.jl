@@ -746,12 +746,17 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     HH = Magnus4State(H1, H2, f*dt, s3)
     if symmetrized_defect
         HHd = Magnus4DerivativeState(H1, H2, H1d, H2d, dt, f, c1-1/2, c2-1/2, s3, s4)
+        H1 = H(t, matrix_times_minus_i=true)
+        A_mul_B!(psi_est, H1, psi)
+        psi_est[:] *= -0.5
     else
         HHd = Magnus4DerivativeState(H1, H2, H1d, H2d, dt, f, c1, c2, s3, s4)
+        psi_est[:] = 0.0
     end
 
     if trapezoidal_rule
-        CC!(psi_est, HH, HHd, psi, -1, dt, s1, s2)
+        CC!(s, HH, HHd, psi, -1, dt, s1, s2)
+        psi_est[:] += s[:]
 
         if use_expm
             psi[:] = expm(-1im*dt*full(HHe))*psi
@@ -765,33 +770,28 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         
         CC!(s, HH, HHd, psi, +1, dt, s1, s2)
         psi_est[:] += s[:]
-    elseif symmetrized_defect
-        H1 = H(t, matrix_times_minus_i=true)
-        A_mul_B!(psi_est, H1, psi)
-        psi_est[:] *= -0.5
-
-        if use_expm
-            psi[:] = expm(-1im*dt*full(HHe))*psi
-            psi_est[:] = expm(-1im*dt*full(HHe))*psi_est
-        else
-            expv!(psi, dt, HHe, psi, anorm=norm0(H1e), 
-                 matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
-            expv!(psi_est, dt, HHe, psi_est, anorm=norm0(H1e), 
-                 matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
-        end
-
-        Gamma!(s, HH, HHd, psi, 4, dt, s1, s2, s1a, s2a)
-        psi_est[:] += s[:]
-
     else
-        if use_expm
-            psi[:] = expm(-1im*dt*full(HHe))*psi
+        if symmetrized_defect
+           if use_expm
+                psi[:] = expm(-1im*dt*full(HHe))*psi
+                psi_est[:] = expm(-1im*dt*full(HHe))*psi_est
+            else
+                expv!(psi, dt, HHe, psi, anorm=norm0(H1e), 
+                     matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+                expv!(psi_est, dt, HHe, psi_est, anorm=norm0(H1e), 
+                     matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+            end
         else
-            expv!(psi, dt, HHe, psi, anorm=norm0(H1e), 
-                 matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+            if use_expm
+                psi[:] = expm(-1im*dt*full(HHe))*psi
+            else
+                expv!(psi, dt, HHe, psi, anorm=norm0(H1e), 
+                     matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+            end
         end
     
-        Gamma!(psi_est, HH, HHd, psi, 4, dt, s1, s2, s1a, s2a)
+        Gamma!(s, HH, HHd, psi, 4, dt, s1, s2, s1a, s2a)
+        psi_est[:] += s[:]
     end
 
     H1 = H(t + dt, matrix_times_minus_i=true)
