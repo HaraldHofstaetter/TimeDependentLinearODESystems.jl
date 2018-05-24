@@ -729,9 +729,9 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     s2a = unsafe_wrap(Array, pointer(wsp, 4*n+1), n, false)
     
     sqrt3 = sqrt(3)
+    f = sqrt3/12
     c1 = 1/2-sqrt3/6
     c2 = 1/2+sqrt3/6
-    f = sqrt3/12
     s3 = similar(psi) # TODO: take somthing from wsp
     s4 = similar(psi) # TODO: take somthing from wsp
 
@@ -744,7 +744,11 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     H1d = H(t + c1*dt, matrix_times_minus_i=true, compute_derivative=true)
     H2d = H(t + c2*dt, matrix_times_minus_i=true, compute_derivative=true)
     HH = Magnus4State(H1, H2, f*dt, s3)
-    HHd = Magnus4DerivativeState(H1, H2, H1d, H2d, dt, f, c1, c2, s3, s4)
+    if symmetrized_defect
+        HHd = Magnus4DerivativeState(H1, H2, H1d, H2d, dt, f, c1-1/2, c2-1/2, s3, s4)
+    else
+        HHd = Magnus4DerivativeState(H1, H2, H1d, H2d, dt, f, c1, c2, s3, s4)
+    end
 
     if trapezoidal_rule
         CC!(psi_est, HH, HHd, psi, -1, dt, s1, s2)
@@ -761,6 +765,24 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         
         CC!(s, HH, HHd, psi, +1, dt, s1, s2)
         psi_est[:] += s[:]
+    elseif symmetrized_defect
+        H1 = H(t, matrix_times_minus_i=true)
+        A_mul_B!(psi_est, H1, psi)
+        psi_est[:] *= -0.5
+
+        if use_expm
+            psi[:] = expm(-1im*dt*full(HHe))*psi
+            psi_est[:] = expm(-1im*dt*full(HHe))*psi_est
+        else
+            expv!(psi, dt, HHe, psi, anorm=norm0(H1e), 
+                 matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+            expv!(psi_est, dt, HHe, psi_est, anorm=norm0(H1e), 
+                 matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+        end
+
+        Gamma!(s, HH, HHd, psi, 4, dt, s1, s2, s1a, s2a)
+        psi_est[:] += s[:]
+
     else
         if use_expm
             psi[:] = expm(-1im*dt*full(HHe))*psi
@@ -774,7 +796,9 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
 
     H1 = H(t + dt, matrix_times_minus_i=true)
     A_mul_B!(s, H1, psi)
-
+    if symmetrized_defect
+        s[:] *= 0.5
+    end
     psi_est[:] -= s[:]
     psi_est[:] *= (dt/5)
 end
