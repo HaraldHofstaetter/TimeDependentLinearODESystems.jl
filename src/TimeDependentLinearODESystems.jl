@@ -321,50 +321,6 @@ function step_estimated_CF2_symm_def!(psi::Array{Complex{Float64},1}, psi_est::A
 end
 
 
-function step_estimated_CF4_trapezoidal_rule!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
-                 H::TimeDependentSchroedingerMatrix, 
-                 t::Real, dt::Real,
-                 scheme::CommutatorFreeScheme,
-                 wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
-                 use_expm::Bool=false)
-    n = size(H, 2)
-    s = unsafe_wrap(Array, pointer(wsp, 1), n, false)
-    s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, false)
-    s2 = unsafe_wrap(Array, pointer(wsp, 2*n+1), n, false)
-
-    tt = t+dt*scheme.c
-
-    for j=1:number_of_exponentials(scheme)
-        H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=true)
-        H1d = H(tt, scheme.c.*scheme.A[j,:], compute_derivative=true, matrix_times_minus_i=true)
-    
-        CC!(s, H1, H1d, psi, -1, dt, s1, s2)
-        psi_est[:] += s[:]
-    
-        H1e = H(tt, scheme.A[j,:], matrix_times_minus_i=false)
-        if use_expm
-            psi[:] = expm(-1im*dt*full(H1e))*psi
-            psi_est[:] = expm(-1im*dt*full(H1e))*psi_est
-        else
-            expv!(psi, dt, H1e, psi, anorm=norm0(H1e), 
-                 matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
-            expv!(psi_est, dt, H1e, psi_est, anorm=norm0(H1e), 
-                 matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
-        end
-
-        CC!(s, H1, H1d, psi, +1, dt, s1, s2)
-        psi_est[:] += s[:]
-    end
-
-    H1 = H(t+dt, matrix_times_minus_i=true)
-    A_mul_B!(s, H1, psi)
-    psi_est[:] -= s[:]
-
-    psi_est[:] *= dt/(scheme.p+1)
-end
-
-
-
 function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
                  H::TimeDependentSchroedingerMatrix, 
                  t::Real, dt::Real,
@@ -378,9 +334,6 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         return
     elseif scheme==CF2 && trapezoidal_rule
         step_estimated_CF2_trapezoidal_rule!(psi, psi_est, H, t, dt, wsp, iwsp, use_expm=use_expm)
-        return
-    elseif get_order(scheme)==4 && trapezoidal_rule
-        step_estimated_CF4_trapezoidal_rule!(psi, psi_est, H, t, dt, scheme, wsp, iwsp, use_expm=use_expm)
         return
     end
     n = size(H, 2)
@@ -401,32 +354,38 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     end
 
     for j=1:number_of_exponentials(scheme)
-
-        H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=false)
-        if use_expm
-            psi[:] = expm(-1im*dt*full(H1))*psi
-            if symmetrized_defect || j>1
-                psi_est[:] = expm(-1im*dt*full(H1))*psi_est
-            end
-        else
-            expv!(psi, dt, H1, psi, anorm=norm0(H1),
-                  matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
-            if symmetrized_defect || j>1
-                expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), 
-                      matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
-            end
-        end
-    
         H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=true)
         if symmetrized_defect
             H1d = H(tt, (scheme.c-0.5).*scheme.A[j,:], compute_derivative=true, matrix_times_minus_i=true)
         else
             H1d = H(tt, scheme.c.*scheme.A[j,:], compute_derivative=true, matrix_times_minus_i=true)
         end
-        Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a)
+        if trapezoidal_rule
+            CC!(s, H1, H1d, psi, -1, dt, s1, s2)
+            psi_est[:] += s[:]
+        end
 
+        H1e = H(tt, scheme.A[j,:], matrix_times_minus_i=false)
+        if use_expm
+            psi[:] = expm(-1im*dt*full(H1e))*psi
+            if symmetrized_defect || trapezoidal_rule || j>1
+                psi_est[:] = expm(-1im*dt*full(H1e))*psi_est
+            end
+        else
+            expv!(psi, dt, H1e, psi, anorm=norm0(H1e),
+                  matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+            if symmetrized_defect || trapezoidal_rule || j>1
+                expv!(psi_est, dt, H1e, psi_est, anorm=norm0(H1), 
+                      matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+            end
+        end
+    
+        if trapezoidal_rule
+            CC!(s, H1, H1d, psi, +1, dt, s1, s2)
+        else
+            Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a)
+        end
         psi_est[:] += s[:]
-
     end
    
     H1 = H(t+dt, matrix_times_minus_i=true)
