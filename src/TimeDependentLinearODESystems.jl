@@ -396,46 +396,25 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         H1 = H(t, matrix_times_minus_i=true)
         A_mul_B!(psi_est, H1, psi)
         psi_est[:] *= -0.5
-        
-        H1 = H(tt, scheme.A[1,:], matrix_times_minus_i=false)
-        if use_expm
-            psi_est[:] = expm(-1im*dt*full(H1))*psi_est
-        else
-            expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), 
-                  matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
-        end
     else
         psi_est[:] = 0.0
     end
-    
-    H1 = H(tt, scheme.A[1,:], matrix_times_minus_i=false)
-    if use_expm
-        psi[:] = expm(-1im*dt*full(H1))*psi
-    else
-        expv!(psi, dt, H1, psi, anorm=norm0(H1),
-              matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
-    end
 
-    H1 = H(tt, scheme.A[1,:], matrix_times_minus_i=true)
-    if symmetrized_defect
-        H1d = H(tt, (scheme.c-0.5).*scheme.A[1,:], compute_derivative=true, matrix_times_minus_i=true)
-    else
-        H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true, matrix_times_minus_i=true)
-    end
-    Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a)
-    psi_est[:] += s[:]
-
-    for j=2:number_of_exponentials(scheme)
+    for j=1:number_of_exponentials(scheme)
 
         H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=false)
         if use_expm
-            psi_est[:] = expm(-1im*dt*full(H1))*psi_est
             psi[:] = expm(-1im*dt*full(H1))*psi
+            if symmetrized_defect || j>1
+                psi_est[:] = expm(-1im*dt*full(H1))*psi_est
+            end
         else
-            expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), 
-                  matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
             expv!(psi, dt, H1, psi, anorm=norm0(H1),
                   matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+            if symmetrized_defect || j>1
+                expv!(psi_est, dt, H1, psi_est, anorm=norm0(H1), 
+                      matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+            end
         end
     
         H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=true)
