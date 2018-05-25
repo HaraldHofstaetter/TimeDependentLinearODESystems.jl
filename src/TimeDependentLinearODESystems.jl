@@ -104,65 +104,81 @@ function Gamma!(r::Vector{Complex{Float64}},
                 H::TimeDependentMatrixState, Hd::TimeDependentMatrixState,
                 u::Vector{Complex{Float64}}, p::Int, dt::Float64, 
                 s1::Vector{Complex{Float64}}, s2::Vector{Complex{Float64}},
-                s1a::Vector{Complex{Float64}}, s2a::Vector{Complex{Float64}})
+                s1a::Vector{Complex{Float64}}, s2a::Vector{Complex{Float64}};
+                modified_Gamma::Bool=false)
+    f1 = dt
+    f2 = dt^2/2
+    f3 = dt^3/6
+    f4 = dt^4/24
+    f5 = dt^5/120  
+    f6 = dt^6/720
+    if modified_Gamma
+        if p==2
+            p = 3
+            f3 = dt^3/4
+        elseif p==4
+            p = 5
+            f5 = dt^5/144
+        end
+    end
     #s2=B*u
     A_mul_B!(s2, H, u)
     r[:] = s2[:] 
     if p>=1
         #s1=A*u
         A_mul_B!(s1, Hd, u)
-        r[:] += dt*s1[:] 
+        r[:] += f1*s1[:] 
     end
     if p>=2
         #s1=B*s1=BAu
         A_mul_B!(s1a, H, s1)
-        r[:] += (dt^2/2)*s1a[:] 
+        r[:] += f2*s1a[:] 
     end
     if p>=3
         #s1=B*s1=BBAu
         A_mul_B!(s1, H, s1a)
-        r[:] += (dt^3/6)*s1[:] 
+        r[:] += f3*s1[:] 
     end
     if p>=4
         #s1=B*s1=BBBAu
         A_mul_B!(s1a, H, s1)
-        r[:] += (dt^4/24)*s1a[:] 
+        r[:] += f4*s1a[:] 
     end
     if p>=5
         #s1=B*s1=BBBBAu
         A_mul_B!(s1, H, s1a)
-        r[:] += (dt^5/120)*s1[:] 
+        r[:] += f5*s1[:] 
     end
     if p>=6
         #s1=B*s1=BBBBBAu
         A_mul_B!(s1a, H, s1)
-        r[:] += (dt^6/720)*s1a[:] 
+        r[:] += f6*s1a[:] 
     end
 
     if p>=2
         #s1=A*s2=ABu
         A_mul_B!(s1, Hd, s2)
-        r[:] -= (dt^2/2)*s1[:] 
+        r[:] -= f2*s1[:] 
     end
     if p>=3
         #s1=B*s1=BABu
         A_mul_B!(s1a, H, s1)
-        r[:] -= (dt^3/3)*s1a[:] 
+        r[:] -= (2*f3)*s1a[:] 
     end
     if p>=4
         #s1=B*s1=BBABu
         A_mul_B!(s1, H, s1a)
-        r[:] -= (dt^4/8)*s1[:] 
+        r[:] -= (3*f4)*s1[:] 
     end
     if p>=5
         #s1=B*s1=BBBABu
         A_mul_B!(s1a, H, s1)
-        r[:] -= (dt^5/30)*s1a[:] 
+        r[:] -= (4*f5)*s1a[:] 
     end
     if p>=6
         #s1=B*s1=BBBBABu
         A_mul_B!(s1, H, s1a)
-        r[:] -= (dt^6/144)*s1[:] 
+        r[:] -= (5*f6)*s1[:] 
     end
 
     if p>=3
@@ -170,22 +186,22 @@ function Gamma!(r::Vector{Complex{Float64}},
         A_mul_B!(s2a, H, s2)
         #s1=A*s2=ABBu
         A_mul_B!(s1, Hd, s2a)
-        r[:] += (dt^3/6)*s1
+        r[:] += f3*s1
     end
     if p>=4
         #s1=B*s1=BABBu
         A_mul_B!(s1a, H, s1)
-        r[:] += (dt^4/8)*s1a
+        r[:] += (3*f4)*s1a
     end
     if p>=5
         #s1=B*s1=BBABBu
         A_mul_B!(s1, H, s1a)
-        r[:] += (dt^5/20)*s1
+        r[:] += (6*f5)*s1
     end
     if p>=6
         #s1=B*s1=BBBABBu
         A_mul_B!(s1a, H, s1)
-        r[:] += (dt^6/72)*s1a
+        r[:] += (10*f6)*s1a
     end
 
     if p>=4
@@ -193,17 +209,17 @@ function Gamma!(r::Vector{Complex{Float64}},
         A_mul_B!(s2, H, s2a)
         #s1=A*s2=ABBBu
         ;  A_mul_B!(s1, Hd, s2)
-        r[:] -= (dt^4/24)*s1
+        r[:] -= f4*s1
     end
     if p>=5
         #s1=B*s1=BABBBu
         A_mul_B!(s1a, H, s1)
-        r[:] -= (dt^5/30)*s1a
+        r[:] -= (4*f5)*s1a
     end
     if p>=6
         #s1=B*s1=BBABBBu
         A_mul_B!(s1, H, s1a)
-        r[:] -= (dt^6/72)*s1
+        r[:] -= (10*f6)*s1
     end
 
     if p>=5
@@ -211,12 +227,12 @@ function Gamma!(r::Vector{Complex{Float64}},
         A_mul_B!(s2a, H, s2)
         #s1=A*s2=ABBBBu
         A_mul_B!(s1, Hd, s2a)
-        r[:] += (dt^5/120)*s1
+        r[:] += f5*s1
     end
     if p>=6
         #s1=B*s1=BABBBBu
         A_mul_B!(s1a, H, s1)
-        r[:] += (dt^6/144)*s1a
+        r[:] += (5*f6)*s1a
     end
 
     if p>=6
@@ -224,7 +240,7 @@ function Gamma!(r::Vector{Complex{Float64}},
         A_mul_B!(s2, H, s2a)
         #s1=A*s2=ABBBBBu
         A_mul_B!(s1, Hd, s2)
-        r[:] -= (dt^6/720)*s1
+        r[:] -= f6*s1
     end
 end
 
@@ -328,6 +344,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
                  wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
                  symmetrized_defect::Bool=false, 
                  trapezoidal_rule::Bool=false, 
+                 modified_Gamma::Bool=false,
                  use_expm::Bool=false)
     if scheme==CF2 && symmetrized_defect
         step_estimated_CF2_symm_def!(psi, psi_est, H, t, dt, wsp, iwsp, use_expm=use_expm)
@@ -383,7 +400,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         if trapezoidal_rule
             CC!(s, H1, H1d, psi, +1, dt, s1, s2)
         else
-            Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a)
+            Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a, modified_Gamma=modified_Gamma)
         end
         psi_est[:] += s[:]
     end
@@ -410,6 +427,7 @@ function step_estimated!{T<:Union{Array{Float64,1},Array{Complex{Float64},1}}}(
                          wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1}; #TODO wsp also Array{Float64, 1} !?!?
                          symmetrized_defect::Bool=false, 
                          trapezoidal_rule::Bool=false, 
+                         modified_Gamma::Bool=false,
                          use_expm::Bool=false)
     n = size(H, 2)
     s = unsafe_wrap(Array,  pointer(wsp, 1), n, false)
@@ -447,7 +465,7 @@ function step_estimated!{T<:Union{Array{Float64,1},Array{Complex{Float64},1}}}(
     else
         H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true)
     end
-    Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a)
+    Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a, modified_Gamma=modified_Gamma)
     psi_est[:] += s[:]
 
     for j=2:number_of_exponentials(scheme)
@@ -466,7 +484,7 @@ function step_estimated!{T<:Union{Array{Float64,1},Array{Complex{Float64},1}}}(
         else
             H1d = H(tt, scheme.c.*scheme.A[j,:], compute_derivative=true)
         end
-        Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a)
+        Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a, modified_Gamma=modified_Gamma)
 
         psi_est[:] += s[:]
 
@@ -497,6 +515,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
                  wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
                  symmetrized_defect::Bool=false,
                  trapezoidal_rule::Bool=false, 
+                 modified_Gamma::Bool=false,
                  use_expm::Bool=false)
       c = [0.0 1/5 3/10 4/5 8/9 1.0 1.0]
       A = [0.0         0.0        0.0         0.0      0.0          0.0     0.0
@@ -658,6 +677,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
                  wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
                  symmetrized_defect::Bool=false, 
                  trapezoidal_rule::Bool=false, 
+                 modified_Gamma::Bool=false,
                  use_expm::Bool=false)
     n = size(H, 2)
     s = unsafe_wrap(Array, pointer(wsp, 1), n, false)
@@ -728,7 +748,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
             end
         end
     
-        Gamma!(s, HH, HHd, psi, 4, dt, s1, s2, s1a, s2a)
+        Gamma!(s, HH, HHd, psi, 4, dt, s1, s2, s1a, s2a, modified_Gamma=modified_Gamma)
         psi_est[:] += s[:]
     end
 
@@ -836,6 +856,7 @@ function local_orders_est(H::TimeDependentMatrix,
                       reference_steps=10,
                       symmetrized_defect::Bool=false,
                       trapezoidal_rule::Bool=false,
+                      modified_Gamma::Bool=false,
                       rows=8,
                       use_expm::Bool=false)
     tab = zeros(Float64, rows, 5)
@@ -862,6 +883,7 @@ function local_orders_est(H::TimeDependentMatrix,
                         wsp, iwsp,
                         symmetrized_defect=symmetrized_defect,
                         trapezoidal_rule=trapezoidal_rule,
+                        modified_Gamma=modified_Gamma,
                         use_expm=use_expm)
         psi_ref = copy(wf_save_initial_value)
         dt1_ref = dt1/reference_steps
