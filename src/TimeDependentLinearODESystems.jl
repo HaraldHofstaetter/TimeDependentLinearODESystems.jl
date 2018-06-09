@@ -250,12 +250,16 @@ function CC!(r::Vector{Complex{Float64}},
              s::Vector{Complex{Float64}}, s1::Vector{Complex{Float64}})
     A_mul_B!(s, Hd, u)
     r[:] = 0.5*dt*s[:]
-    A_mul_B!(s1, H, s)
-    r[:] += (sign*dt^2/12)*s1
+    if sign!=0
+        A_mul_B!(s1, H, s)
+        r[:] += (sign*dt^2/12)*s1
+    end
     A_mul_B!(s, H, u)
     r[:] += 0.5*s[:]
-    A_mul_B!(s1, Hd, s)
-    r[:] -= (sign*dt^2/12)*s1
+    if sign!=0
+        A_mul_B!(s1, Hd, s)
+        r[:] -= (sign*dt^2/12)*s1
+    end
 end
 
 
@@ -370,7 +374,9 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         psi_est[:] = 0.0
     end
 
-    for j=1:number_of_exponentials(scheme)
+    J = number_of_exponentials(scheme)
+
+    for j=1:J
         H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=true)
         if symmetrized_defect
             H1d = H(tt, (scheme.c-0.5).*scheme.A[j,:], compute_derivative=true, matrix_times_minus_i=true)
@@ -378,7 +384,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
             H1d = H(tt, scheme.c.*scheme.A[j,:], compute_derivative=true, matrix_times_minus_i=true)
         end
         if trapezoidal_rule
-            CC!(s, H1, H1d, psi, -1, dt, s1, s2)
+            CC!(s, H1, H1d, psi, j==1?-1:0, dt, s1, s2)
             psi_est[:] += s[:]
         end
 
@@ -398,7 +404,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         end
     
         if trapezoidal_rule
-            CC!(s, H1, H1d, psi, +1, dt, s1, s2)
+            CC!(s, H1, H1d, psi, j==J?+1:0, dt, s1, s2)
         else
             Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a, modified_Gamma=modified_Gamma)
         end
