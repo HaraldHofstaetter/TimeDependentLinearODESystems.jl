@@ -248,15 +248,18 @@ function CC!(r::Vector{Complex{Float64}},
              H::TimeDependentMatrixState, Hd::TimeDependentMatrixState,
              u::Vector{Complex{Float64}}, sign::Int, dt::Float64, 
              s::Vector{Complex{Float64}}, s1::Vector{Complex{Float64}})
-    A_mul_B!(s, Hd, u)
-    r[:] = 0.5*dt*s[:]
-    if sign!=0
+    if sign==0
+        A_mul_B!(s, Hd, u)
+        r[:] = dt*s[:]
+        A_mul_B!(s, H, u)
+        r[:] += s[:]
+    else
+        A_mul_B!(s, Hd, u)
+        r[:] = 0.5*dt*s[:]
         A_mul_B!(s1, H, s)
         r[:] += (sign*dt^2/12)*s1
-    end
-    A_mul_B!(s, H, u)
-    r[:] += 0.5*s[:]
-    if sign!=0
+        A_mul_B!(s, H, u)
+        r[:] += 0.5*s[:]
         A_mul_B!(s1, Hd, s)
         r[:] -= (sign*dt^2/12)*s1
     end
@@ -383,8 +386,8 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         else
             H1d = H(tt, scheme.c.*scheme.A[j,:], compute_derivative=true, matrix_times_minus_i=true)
         end
-        if trapezoidal_rule
-            CC!(s, H1, H1d, psi, j==1?-1:0, dt, s1, s2)
+        if trapezoidal_rule && j==1
+            CC!(s, H1, H1d, psi, -1, dt, s1, s2)
             psi_est[:] += s[:]
         end
 
