@@ -1,53 +1,5 @@
 load_example("hubbard.jl")
 
-
-function get_integral_f(t::Real, dt::Real, f::Function; with_factor::Bool=false)
-    #order 4
-    xw = [(1/2-sqrt(1/12), 1/2),
-          (1/2+sqrt(1/12), 1/2)]
-    #order 6
-    #xw = [(1/2-sqrt(3/20), 5/18),
-    #      (1/2           , 8/18),
-    #      (1/2+sqrt(3/20), 5/18)] 
-    if with_factor
-        return dt^2*sum([w*f(t+dt*x)*(x-1/2) for (x,w) in xw])
-
-    else
-        return dt*sum([w*f(t+dt*x) for (x,w) in xw])
-    end    
-end
-
-
-function get_integral_r(t::Real, dt::Real, f::Function)
-    # order 4:
-    xyw=[(0.445948490915965, 0.445948490915965, 0.223381589678011),
-         (0.445948490915965, 0.108103018168070, 0.223381589678011),
-         (0.108103018168070, 0.445948490915965, 0.223381589678011),
-         (0.091576213509771, 0.091576213509771, 0.109951743655322),
-         (0.091576213509771, 0.816847572980459, 0.109951743655322),
-         (0.816847572980459, 0.091576213509771, 0.109951743655322)]
-    
-    # order 6:
-    #xyw=[(0.333333333333333, 0.333333333333333, 0.225000000000000),
-    #     (0.470142064105115, 0.470142064105115, 0.132394152788506),
-    #     (0.470142064105115, 0.059715871789770, 0.132394152788506),
-    #     (0.059715871789770, 0.470142064105115, 0.132394152788506),
-    #     (0.101286507323456, 0.101286507323456, 0.125939180544827),
-    #     (0.101286507323456, 0.797426985353087, 0.125939180544827),
-    #     (0.797426985353087, 0.101286507323456, 0.125939180544827)]; 
-    h = 0.0
-    for (x,y,w) in xyw
-        tx = t+dt*x
-        ty = t+dt*(1-y)
-        fx = f(tx)
-        fy = f(ty)
-        cx,sx = real(fx), imag(fx)
-        cy,sy = real(fy), imag(fy)
-        h += w*(cy*sx-cx*sy)
-    end
-    0.25*dt^2*h
-end
-
 function get_integrals_csr(t::Real, dt::Real, f::Function)
     # order 4:
     xyw=[(0.445948490915965, 0.445948490915965, 0.223381589678011),
@@ -68,40 +20,82 @@ function get_integrals_csr(t::Real, dt::Real, f::Function)
     c = 0.0
     s = 0.0
     r = 0.0
-    for (x,y,w) in xyw
+    for (x,y0,w) in xyw
+        y = 1-y0 # mirrored triangle
         tx = t+dt*x
-        ty = t+dt*(1-y)
+        ty = t+dt*y
         fx = f(tx)
         fy = f(ty)
         cx, sx = real(fx), imag(fx)
         cy, sy = real(fy), imag(fy)
-        c += w*(cy-cx)
-        s += w*(sy-sx)
-        r += w*(cy*sx-cx*sy)
+        c += w*(cy - cx)
+        s += w*(sy - sx)
+        r += w*(cy*sx - cx*sy)
     end
-    c *= 0.25*dt^2
-    s *= 0.25*dt^2
-    r *= 0.25*dt^2
+    c *= 0.25*dt
+    s *= 0.25*dt
+    r *= 0.25*dt
     (c, s, r)
 end
 
-
-function get_A(H::Hubbard, t::Real, dt::Real; 
-               compute_derivative::Bool=false, matrix_times_minus_i::Bool=true)
-    if  compute_derivative
-        error("compute_derivative not yet implemented")
-    else
-        fac_diag = dt 
-        fac_offdiag = get_integral_f(t, dt, H.f)
-    end
+function get_integrals_csr_d(t::Real, dt::Real, f::Function, fd::Function; symmetrized_defect::Bool=false)
+    # order 4:
+    xyw=[(0.445948490915965, 0.445948490915965, 0.223381589678011),
+         (0.445948490915965, 0.108103018168070, 0.223381589678011),
+         (0.108103018168070, 0.445948490915965, 0.223381589678011),
+         (0.091576213509771, 0.091576213509771, 0.109951743655322),
+         (0.091576213509771, 0.816847572980459, 0.109951743655322),
+         (0.816847572980459, 0.091576213509771, 0.109951743655322)]
     
-    HubbardState(matrix_times_minus_i, compute_derivative, fac_diag, fac_offdiag, H)
+    # order 6:
+    #xyw=[(0.333333333333333, 0.333333333333333, 0.225000000000000),
+    #     (0.470142064105115, 0.470142064105115, 0.132394152788506),
+    #     (0.470142064105115, 0.059715871789770, 0.132394152788506),
+    #     (0.059715871789770, 0.470142064105115, 0.132394152788506),
+    #     (0.101286507323456, 0.101286507323456, 0.125939180544827),
+    #     (0.101286507323456, 0.797426985353087, 0.125939180544827),
+    #     (0.797426985353087, 0.101286507323456, 0.125939180544827)]; 
+    c = 0.0
+    s = 0.0
+    r = 0.0
+    cd = 0.0
+    sd = 0.0
+    rd = 0.0
+    for (x,y0,w) in xyw
+        y = 1-y0 # mirrored triangle
+        tx = t+dt*x
+        ty = t+dt*y
+        fx = f(tx)
+        fy = f(ty)
+        fdx = fd(tx)
+        fdy = fd(ty)
+        cx, sx = real(fx), imag(fx)
+        cy, sy = real(fy), imag(fy)
+        cdx, sdx = real(fdx), imag(fdx)
+        cdy, sdy = real(fdy), imag(fdy)
+        c += w*(cy - cx)
+        s += w*(sy - sx)
+        r += w*(cy*sx - cx*sy)
+        if symmetrized_defect
+            cd += w*(cdy*(y-0.5) - cdx*(x-0.5))
+            sd += w*(sdy*(y-0.5) - sdx*(x-0.5))
+            rd += w*(cdy*sx*(y-0.5) + cy*sdx*(x-0.5) - cdx*sy*(x-0.5) - cx*sdy*(y-0.5))
+        else
+            cd += w*(cdy*y - cdx*x)
+            sd += w*(sdy*y - sdx*x)
+            rd += w*(cdy*sx*y + cy*sdx*x - cdx*sy*x - cx*sdy*y)
+        end
+    end
+    cd = 0.5*c + 0.25*dt*cd
+    sd = 0.5*s + 0.25*dt*sd
+    rd = 0.5*r + 0.25*dt*rd
+    (cd, sd, rd)
 end
+
 
 
 struct BState <: TimeDependentSchroedingerMatrixState
     matrix_times_minus_i :: Bool
-    compute_derivative :: Bool
     H::Hubbard
     c::Float64
     s::Float64
@@ -119,17 +113,15 @@ function get_B(H::Hubbard, t::Real, dt::Real,
                h3::Array{Complex128,1},
                h4::Array{Complex128,1},
                h5::Array{Complex128,1};
-               compute_derivative::Bool=false, matrix_times_minus_i::Bool=true)
-    if  compute_derivative
-        error("compute_derivative not yet implemented")
+               compute_derivative::Bool=false, matrix_times_minus_i::Bool=true,
+               symmetrized_defect::Bool=false)
+    if compute_derivative
+        c, s, r = get_integrals_csr_d(t, dt, H.f, H.fd, symmetrized_defect=symmetrized_defect)
     else
-        #r = get_integral_r(t, dt, H.f)
-        #f = get_integral_f(t, dt, H.f, with_factor=true)
-        #c, s = real(f), imag(f)
         c, s, r = get_integrals_csr(t, dt, H.f)
     end
     
-    BState(matrix_times_minus_i, compute_derivative, H, c, s, r, h1, h2, h3, h4, h5)
+    BState(matrix_times_minus_i, H, c, s, r, h1, h2, h3, h4, h5)
 end
 
 import Base.LinAlg: A_mul_B!, issymmetric, ishermitian, checksquare
@@ -144,9 +136,15 @@ checksquare(B::BState) = checksquare(B.H)
 
 
 function full(B::BState) 
-    return full((-1im*B.c)*(B.H.H_upper_symm*diagm(B.H.H_diag)-diagm(B.H.H_diag)*B.H.H_upper_symm)+
-    B.s*(B.H.H_upper_anti*diagm(B.H.H_diag)-diagm(B.H.H_diag)*B.H.H_upper_anti)+
-    B.r*(B.H.H_upper_symm*B.H.H_upper_anti-B.H.H_upper_anti*B.H.H_upper_symm))
+    if B.matrix_times_minus_i
+        return full(-(B.H.H_upper_symm*diagm(B.H.H_diag)-diagm(B.H.H_diag)*B.H.H_upper_symm)+
+                    (-1im*B.s)*(B.H.H_upper_anti*diagm(B.H.H_diag)-diagm(B.H.H_diag)*B.H.H_upper_anti)+
+                    (-1im*B.r)*(B.H.H_upper_symm*B.H.H_upper_anti-B.H.H_upper_anti*B.H.H_upper_symm))
+    else
+        return full((-1im*B.c)*(B.H.H_upper_symm*diagm(B.H.H_diag)-diagm(B.H.H_diag)*B.H.H_upper_symm)+
+        B.s*(B.H.H_upper_anti*diagm(B.H.H_diag)-diagm(B.H.H_diag)*B.H.H_upper_anti)+
+        B.r*(B.H.H_upper_symm*B.H.H_upper_anti-B.H.H_upper_anti*B.H.H_upper_symm))
+    end
 end
 
 
@@ -173,6 +171,9 @@ function A_mul_B!(y, B::BState, u)
     B.v[:] = (-1im)*B.c*B.Hsu+B.s*B.Hau
     B.w[:] = B.H.H_diag.*B.v
     y[:] -= B.w
+    if B.matrix_times_minus_i
+        y[:] *= -1im
+    end
 end
 
 abstract type MagnusStrang end
@@ -195,28 +196,150 @@ function TimeDependentLinearODESystems.step!(psi::Array{Complex{Float64},1}, H::
                t::Real, dt::Real, scheme::Type{MagnusStrang},
                wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
                use_expm::Bool=false)
-    global XA, XB
     h1 = similar(psi) # TODO: take somthing from wsp
     h2 = similar(psi) # TODO: take somthing from wsp
     h3 = similar(psi) # TODO: take somthing from wsp
     h4 = similar(psi) # TODO: take somthing from wsp
     h5 = similar(psi) # TODO: take somthing from wsp
-    A = get_A(H, t, dt, matrix_times_minus_i=false)            
+    #order 2
+    #x = [1/2]
+    #w = [1.0]
+    #order 4
+    x = [1/2-sqrt(1/12), 1/2+sqrt(1/12)]
+    w = [1/2, 1/2]
+    #order 6
+    #x = [1/2-sqrt(3/20), 1/2, 1/2+sqrt(3/20)] 
+    #w = [5/18, 8/18, 5/18] 
+
+    tt = t+dt*x
+
+    A = H(tt, w, matrix_times_minus_i=false)
     B = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=false)
-    nA = H.norm0*dt
-    nB = 0.5*H.norm0*dt^3
     if use_expm
-        psi[:] = expm(-0.5im*full(B))*psi
-        psi[:] = expm(-1im*full(A))*psi
-        psi[:] = expm(-0.5im*full(B))*psi
-        #psi[:] = expm(-1im*(full(A)+full(B)))*psi
+        psi[:] = expm(-0.5im*dt*full(B))*psi
+        psi[:] = expm(-1im*dt*full(A))*psi
+        psi[:] = expm(-0.5im*dt*full(B))*psi
+        #psi[:] = expm(-1im*dt*(full(A)+full(B)))*psi
     else
-        expv!(psi, 0.5, B, psi, anorm=nB, 
+        nA = H.norm0
+        nB = 0.5*H.norm0*dt^2
+        expv!(psi, 0.5*dt, B, psi, anorm=nB, 
              matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
-        expv!(psi, 1.0, A, psi, anorm=nA, 
+        expv!(psi, dt, A, psi, anorm=nA, 
              matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
-        expv!(psi, 0.5, B, psi, anorm=nB, 
+        expv!(psi, 0.5*dt, B, psi, anorm=nB, 
              matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
     end
 end  
+
+
+function TimeDependentLinearODESystems.step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
+                 H::Hubbard, 
+                 t::Real, dt::Real,
+                 scheme::Type{MagnusStrang},
+                 wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
+                 symmetrized_defect::Bool=false, 
+                 trapezoidal_rule::Bool=false, 
+                 modified_Gamma::Bool=false,
+                 use_expm::Bool=false)
+    h = similar(psi) # TODO: take somthing from wsp
+    h1 = similar(psi) # TODO: take somthing from wsp
+    h2 = similar(psi) # TODO: take somthing from wsp
+    h3 = similar(psi) # TODO: take somthing from wsp
+    h4 = similar(psi) # TODO: take somthing from wsp
+    h5 = similar(psi) # TODO: take somthing from wsp
+    #order 2
+    #x = [1/2]
+    #w = [1.0]
+    #order 4
+    x = [1/2-sqrt(1/12), 1/2+sqrt(1/12)]
+    w = [1/2, 1/2]
+    #order 6
+    #x = [1/2-sqrt(3/20), 1/2, 1/2+sqrt(3/20)] 
+    #w = [5/18, 8/18, 5/18] 
+
+    tt = t+dt*x
+
+    if symmetrized_defect
+        H1 = H(t, matrix_times_minus_i=true)
+        A_mul_B!(psi_est, H1, psi)
+        psi_est[:] *= -0.5
+    else
+        psi_est[:] = 0.0
+    end
+
+    #1/2 B -----------------------
+
+    B = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=false)
+    if use_expm
+        psi[:] =         expm(-0.5im*dt*full(B))*psi
+        if symmetrized_defect
+            psi_est[:] = expm(-0.5im*dt*full(B))*psi_est
+        end
+    else
+        nB = 0.5*H.norm0*dt^2
+        expv!(psi, 0.5*dt, B, psi, anorm=nB, 
+             matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+        if symmetrized_defect
+            expv!(psi_est, 0.5*dt, B, psi_est, anorm=nB, 
+                matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+        end
+    end
+    G = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=true,
+              compute_derivative=true, symmetrized_defect=symmetrized_defect)
+    A_mul_B!(h, G, psi)
+    psi_est[:] += 0.5*dt*h[:]
+
+    #A -----------------------
+
+    A = H(tt, w, matrix_times_minus_i=false)
+    if use_expm
+        psi[:]     = expm(-1im*dt*full(A))*psi
+        psi_est[:] = expm(-1im*dt*full(A))*psi_est
+    else
+        nA = H.norm0
+        expv!(psi, dt, A, psi, anorm=nA, 
+             matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+        expv!(psi_est, dt, A, psi_est, anorm=nA, 
+             matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+    end
+
+    A = H(tt, w, matrix_times_minus_i=true)
+    if symmetrized_defect
+        Ad = H(tt, w.*(x-0.5), compute_derivative=true, matrix_times_minus_i=true)
+    else
+        Ad = H(tt, w.*x, compute_derivative=true, matrix_times_minus_i=true)
+    end
+    Gamma!(h, A, Ad, psi, 4, dt, h1, h2, h3, h4) 
+    psi_est[:] += h[:]
+
+    #1/2 B -----------------------
+
+    if use_expm
+        psi[:] =     expm(-0.5im*dt*full(B))*psi
+        psi_est[:] = expm(-0.5im*dt*full(B))*psi_est
+    else
+        nB = 0.5*H.norm0*dt^2
+        expv!(psi, 0.5*dt, B, psi, anorm=nB, 
+             matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+        expv!(psi_est, 0.5*dt, B, psi_est, anorm=nB, 
+             matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+    end
+    G = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=true, 
+              compute_derivative=true, symmetrized_defect=symmetrized_defect)
+    A_mul_B!(h, G, psi)
+    psi_est[:] += 0.5*dt*h[:]
+
+    #-----------------------------
+
+    H1 = H(t+dt, matrix_times_minus_i=true)
+    A_mul_B!(h, H1, psi)
+    if symmetrized_defect
+        h[:] *= 0.5
+    end
+    psi_est[:] -= h[:]
+
+    psi_est[:] *= dt/5
+end
+
 

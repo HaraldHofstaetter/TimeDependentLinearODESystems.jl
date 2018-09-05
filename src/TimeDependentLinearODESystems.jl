@@ -8,7 +8,7 @@ export get_order, number_of_exponentials
 export load_example
 export EquidistantTimeStepper, local_orders, local_orders_est
 export AdaptiveTimeStepper
-export norm0
+export norm0, Gamma!
 
 
 abstract type TimeDependentMatrixState end
