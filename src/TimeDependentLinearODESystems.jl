@@ -966,6 +966,9 @@ struct AdaptiveTimeStepper
     tol::Float64
     order::Int
     scheme
+    symmetrized_defect::Bool
+    trapezoidal_rule::Bool
+    use_expm::Bool
     psi_est::Array{Complex{Float64},1}
     psi0::Array{Complex{Float64},1}
     wsp  :: Array{Complex{Float64},1}  # workspace for expokit
@@ -973,7 +976,11 @@ struct AdaptiveTimeStepper
 
     function AdaptiveTimeStepper(H::TimeDependentMatrix, 
                  psi::Array{Complex{Float64},1},
-                 t0::Real, tend::Real, dt::Real,  tol::Real; scheme=CF4)
+                 t0::Real, tend::Real, dt::Real,  tol::Real; 
+                 scheme=CF4,
+                 symmetrized_defect::Bool=false,
+                 trapezoidal_rule::Bool=false, 
+                 use_expm::Bool=false)
         order = get_order(scheme)
 
         # allocate workspace
@@ -984,7 +991,9 @@ struct AdaptiveTimeStepper
         psi_est = zeros(Complex{Float64}, size(H, 2))
         psi0 = zeros(Complex{Float64}, size(H, 2))
         
-        new(H, psi, t0, tend, dt, tol, order, scheme, psi_est, psi0, wsp, iwsp)
+        new(H, psi, t0, tend, dt, tol, order, scheme, 
+            symmetrized_defect, trapezoidal_rule, use_expm, 
+            psi_est, psi0, wsp, iwsp)
     end
     
 end
@@ -1015,7 +1024,10 @@ function Base.next(ats::AdaptiveTimeStepper, state::AdaptiveTimeStepperState)
     while err>=1.0
         dt = min(dt, ats.tend-state.t)
         dt0 = dt
-        step_estimated!(ats.psi, ats.psi_est, ats.H, state.t, dt, ats.scheme, ats.wsp, ats.iwsp)
+        step_estimated!(ats.psi, ats.psi_est, ats.H, state.t, dt, ats.scheme, ats.wsp, ats.iwsp,
+                        symmetrized_defect=ats.symmetrized_defect,
+                        trapezoidal_rule=ats.trapezoidal_rule,
+                        use_expm=ats.use_expm)
         err = norm(ats.psi_est)/ats.tol
         dt = dt*min(facmax, max(facmin, fac*(1.0/err)^(1.0/(ats.order+1))))
         if err>=1.0
