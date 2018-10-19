@@ -1,4 +1,7 @@
+using LinearAlgebra
+using SparseArrays
 
+export RosenZener, RosenZenerState
 
 mutable struct RosenZener <: TimeDependentSchroedingerMatrix
     V0::Float64
@@ -17,10 +20,10 @@ mutable struct RosenZener <: TimeDependentSchroedingerMatrix
              1.0 0.0]
         S2 = [0.0  -1.0im
               1.0im 0.0]              
-        H1 = kron(S1,speye(k))
-        H2 = kron(S2,spdiagm((ones(k-1),ones(k-1)),(-1,1)))
-        norm_H1 = norm(H1, 1)
-        norm_H2 = norm(H2, 1)
+        H1 = kron(S1,sparse(1.0I, k, k))
+        H2 = kron(S2,spdiagm(-1 => ones(k-1), 1 => ones(k-1)))
+        norm_H1 = opnorm(H1, 1)
+        norm_H2 = opnorm(H2, 1)
 
         new(V0, omega, T0, d, H1, H2, norm_H1, norm_H2)
     end
@@ -69,8 +72,7 @@ function (H::RosenZener)(t::Vector{Float64}, c::Vector{Float64};
     RosenZenerState(matrix_times_minus_i, compute_derivative, c1, c2, H)
 end
 
-import Base.LinAlg: A_mul_B!, issymmetric, ishermitian, checksquare
-import Base: eltype, size, norm, full
+import Base: eltype, size, full
 
 
 
@@ -83,8 +85,8 @@ end
 
 
 size(H::RosenZener) = (H.d, H.d)
-size(H::RosenZener, dim::Int) = dim<1?error("arraysize: dimension out of range"):
-                                       (dim<3?H.d:1)
+size(H::RosenZener, dim::Int) = dim < 1 ? error("arraysize: dimension out of range") :
+                                          (dim < 3 ? H.d : 1)
 size(H::RosenZenerState) = size(H.H)
 size(H::RosenZenerState, dim::Int) = size(H.H, dim)
 
@@ -93,7 +95,7 @@ issymmetric(H::RosenZenerState) = !H.matrix_times_minus_i && H.c2==0.0
 ishermitian(H::RosenZenerState) = !H.matrix_times_minus_i 
 checksquare(H::RosenZenerState) = H.H.d
 
-function norm(H::RosenZenerState, p=2)
+function LinearAlgebra.norm(H::RosenZenerState, p::Real=2)
     if p==2
         throw(ArgumentError("2-norm not implemented for RosenZener. Try norm(H, p) where p=1 or Inf."))
     elseif !(p==1 || p==Inf)
@@ -102,8 +104,8 @@ function norm(H::RosenZenerState, p=2)
     abs(H.c1)*H.H.norm_H1 + abs(H.c2)*H.H.norm_H2
 end
 
-full(H::RosenZenerState) = (H.matrix_times_minus_i?-1im*full(H.c1*(H.H.H1) + H.c2*(H.H.H2))
-                                                  :     full(H.c1*(H.H.H1) + H.c2*(H.H.H2)))
+full(H::RosenZenerState) = (H.matrix_times_minus_i ? -1im*Matrix(H.c1*(H.H.H1) + H.c2*(H.H.H2))
+                                                   :      Matrix(H.c1*(H.H.H1) + H.c2*(H.H.H2)))
 
 
 
