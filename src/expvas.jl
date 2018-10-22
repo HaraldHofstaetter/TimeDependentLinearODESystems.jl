@@ -14,7 +14,9 @@ cheaply computable a posteriori error bound, see
 > Computable strict upper bounds for Krylov approximations to a class of matrix exponentials 
 > and phi-functions, 2018, https://arxiv.org/abs/1809.03369.
 
-This Julia implementation is based on a MATLAB code by Tobias Jawecki (tobias.jawecki@tuwien.ac.at).
+This Julia implementation is based on a MATLAB code by Tobias Jawecki (tobias.jawecki@tuwien.ac.at),
+some Julia-specific implementation techniques were inspired by the Julia package Expokit.jl 
+(https://github.com/acroy/Expokit.jl).
 
 # Examples
 ```jldoctest
