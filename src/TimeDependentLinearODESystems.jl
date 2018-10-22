@@ -3,6 +3,7 @@ module TimeDependentLinearODESystems
 using LinearAlgebra
 import Base: eltype, size, full
 
+export expvas
 export TimeDependentMatrixState, TimeDependentSchroedingerMatrixState
 export TimeDependentMatrix, TimeDependentSchroedingerMatrix
 export CommutatorFree_Scheme
@@ -20,6 +21,7 @@ abstract type TimeDependentSchroedingerMatrixState <: TimeDependentMatrixState e
 abstract type TimeDependentMatrix end
 abstract type TimeDependentSchroedingerMatrix <: TimeDependentMatrix end
 
+include("expvas.jl")
 
 load_example(name::String) = include(string(dirname(@__FILE__),"/../examples/",name))
 
