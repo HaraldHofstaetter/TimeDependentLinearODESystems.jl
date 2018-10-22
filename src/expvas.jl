@@ -65,7 +65,7 @@ function expvas(t::Number, A, v::Vector{NT};
     if !ishermitian(A)
         error("hermitian matrix expected")
     end
-    if abs(sig)-1>1e-7
+    if abs(abs(sig)-1) > 1e-7
         error("abs(sig)=1 expected")
     end
     sig /= abs(sig)
