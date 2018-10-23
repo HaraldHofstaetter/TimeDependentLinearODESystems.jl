@@ -1,12 +1,12 @@
 using LinearAlgebra
 
 """
-`expvas(t, A, v; [sig=1], [tol=1e-7], [m=min(30, size(A,1))])`
+`expmv(t, A, v; [sig=1], [tol=1e-7], [m=min(30, size(A,1))])`
  
 Computes the matrix exponential acting on some vector, 
-   `w=exp(sig*t*A)*v`
-for `abs(sig)==1`  (e.g., `sig=-1im`, `sig=1`) and hermitian matrix `A`.
-`A` can  be of any type that supports `size`, `ishermitian`, and `mul!`.
+   `w=exp(t*A)*v`
+for hermitian matrix `A`.  `A` can  be of any type that supports `size`, `ishermitian`, and `mul!`.
+Note that `t` may be complex.
 
 The calculation is based on Krylow approximation whose error is controlled by a
 cheaply computable a posteriori error bound, see
@@ -16,7 +16,7 @@ cheaply computable a posteriori error bound, see
 
 This Julia implementation is based on a MATLAB code by Tobias Jawecki (tobias.jawecki@tuwien.ac.at),
 some Julia-specific implementation techniques were inspired by the Julia package Expokit.jl 
-(https://github.com/acroy/Expokit.jl).
+(https://github.com/acroy/Expokit.jl ).
 
 # Examples
 ```jldoctest
@@ -40,7 +40,7 @@ julia> v0 = Vector(1:n); v0 = v0/norm(v0)
  0.458682472293863   
  0.5096471914376256  
 
-julia> w = expvas( 5.0, H, v0, sig=-1im, tol=1e-8, m=10)
+julia> w = expmv(-5.0im, H, v0, tol=1e-8, m=10)
     
 10-element Array{Complex{Float64},1}:
  0.05096390373695163 - 9.672241958644319e-7im 
@@ -57,38 +57,48 @@ julia> w = expvas( 5.0, H, v0, sig=-1im, tol=1e-8, m=10)
 ```
 
 """
-function expvas(t::Number, A, v::Vector{NT}; 
-                sig::Number=1.0,
+function expmv(t::Number, A, v::Vector{NT}; 
                 tol::Real=1e-7, 
-                m::Int=min(30, size(A,1))) where NT 
+                m::Int=min(30, size(A,1))) where NT<:Number 
+    if imag(t)!=0 || eltype(A)==Complex{real(eltype(A))}
+        w = similar(v, Complex{real(NT)})
+    else
+        w = similar(v)
+    end
+    expmv!(w, t, A, v; tol=tol, m=m)
+    return w
+end
+
+expmv!(t::Number, A, v::Vector{NT}; 
+        tol::Real=1e-7, 
+        m::Int=min(30, size(A,1))) where {NT<:Number} = expmv!(v, t, A, v; tol=tol, m=m)
+
+function expmv!(w::Union{Vector{NT}, Vector{Complex{NT}}}, t::Number, A, v::Vector{NT}; 
+                 tol::Real=1e-7, 
+                 m::Int=min(30, size(A,1))) where NT<:Number 
     if size(v,1) != size(A,2)
         error("dimension mismatch")
     end
-    if !ishermitian(A)
+    if !LinearAlgebra.ishermitian(A)
         error("hermitian matrix expected")
     end
-    if abs(abs(sig)-1) > 1e-7
-        error("abs(sig)=1 expected")
-    end
-    sig /= abs(sig)
-
-    isuccess = 1
-    tlist = Float64[]
-    mlist = Int[]
+    t_out = abs(t)
+    sig = t/t_out
 
     if imag(sig)==0
         sig = real(sig)
-        v1 = copy(v) 
-    else
-        v1 = similar(v, Complex{real(NT)})
-        copyto!(v1, v)
     end
-    w = similar(v1)
+    if (imag(sig)!=0 || eltype(v)==Complex{real(NT)} || eltype(A)==Complex{real(eltype(A))}) && 
+        eltype(w)!= Complex{real(NT)}
+        error("complex output array expected")
+    end
+    copyto!(w, v)
 
+    z = similar(w)
     # storage for Krylov subspace vectors
-    V = Array{typeof(v1)}(undef,m+1)
+    V = Array{typeof(w)}(undef,m+1)
     for k=1:m+1
-        V[k] = similar(v1)
+        V[k] = similar(w)
     end
     T = SymTridiagonal(zeros(real(NT), m+1), zeros(real(NT), m))
 
@@ -96,7 +106,6 @@ function expvas(t::Number, A, v::Vector{NT};
     mb = m 
     early_break = false
     t_now = 0.0 
-    t_out = t
 
     maxsteps = 100
     zerotol = 1E-12
@@ -105,20 +114,20 @@ function expvas(t::Number, A, v::Vector{NT};
         nstep = nstep + 1
         t_fin = t_out - t_now
 
-        beta = norm(v1)
-        rmul!(copyto!(V[1], v1), 1/beta) #V[1] = (1/beta)*v1
+        beta = norm(w)
+        rmul!(copyto!(V[1], w), 1/beta) #V[1] = (1/beta)*w
         gamfac = 1.0 
         tk = 1.0
   
         for k = 1:m # start Lanczos
-            mul!(w, A, V[k])
+            mul!(z, A, V[k])
             if k>=2
-                axpy!(-T.ev[k-1], V[k-1], w)
+                axpy!(-T.ev[k-1], V[k-1], z)
             end
 
-            T.dv[k] = real(dot(w, V[k]))
-            axpy!(-T.dv[k], V[k], w)
-            T.ev[k] = norm(w)
+            T.dv[k] = real(dot(z, V[k]))
+            axpy!(-T.dv[k], V[k], z)
+            T.ev[k] = norm(z)
 
             # test if secondary diagonal entry is zero (lucky breakdown)
             if T.ev[k] < zerotol 
@@ -128,7 +137,7 @@ function expvas(t::Number, A, v::Vector{NT};
                 break
             end
 
-            rmul!(copyto!(V[k+1], w), 1/T.ev[k]) #V[k+1] = (1.0/T[k+1,k])*w
+            rmul!(copyto!(V[k+1], z), 1/T.ev[k]) #V[k+1] = (1.0/T[k+1,k])*z
 
             # test error estimate to stop Lanczos if approximation is already accurate enough
             gamfac *= T.ev[k]/k
@@ -148,14 +157,10 @@ function expvas(t::Number, A, v::Vector{NT};
 
         # compute exponential of small matrix T 
         E = exp((sig*t_step)*view(T,1:mb,1:mb))
-        fill!(v1, zero(NT))
+        fill!(w, zero(NT))
         for k=1:mb
-            axpy!(beta*E[k,1], V[k], v1)
+            axpy!(beta*E[k,1], V[k], w)
         end
-
-        # output
-        # push!(mlist, mb)
-        # push!(tlist, t_step)
 
         if nstep>maxsteps;
             @warn("Lanczos reached max number of discrete time steps")
@@ -166,7 +171,7 @@ function expvas(t::Number, A, v::Vector{NT};
         t_now +=  t_step
     end
 
-    v1 #, isuccess, tlist, mlist
+    w 
 end
 
 
