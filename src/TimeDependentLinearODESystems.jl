@@ -11,7 +11,8 @@ export CF2, CF4, CF4o, CF6, CF8, CF8AF, DoPri45, Magnus4
 export get_order, number_of_exponentials
 export load_example
 export EquidistantTimeStepper, local_orders, local_orders_est
-export AdaptiveTimeStepper
+export AdaptiveTimeStepper, EquidistantCorrectedTimeStepper
+export global_orders, global_orders_corr
 export norm0, Gamma!
 
 
@@ -26,9 +27,11 @@ include("expmv.jl")
 load_example(name::String) = include(string(dirname(@__FILE__),"/../examples/",name))
 
 
-using FExpokit
+#using FExpokit
 
-import FExpokit: get_lwsp_liwsp_expv 
+#import FExpokit: get_lwsp_liwsp_expv 
+get_lwsp_liwsp_expv(n::Integer, m::Integer=30) = ( max(10, n*(m+1)+n+(m+2)^2+4*(m+2)^2+6+1), max(7, m+2) )
+
 
 get_lwsp_liwsp_expv(H, scheme, m::Integer=30) = get_lwsp_liwsp_expv(size(H, 2), m)
 
@@ -643,7 +646,8 @@ ishermitian(H::Magnus4DerivativeState) = ishermitian(H.H1) # TODO: check
 checksquare(H::Magnus4DerivativeState) = checksquare(H.H1)
 
 
-function LinearAlgebra.A_mul_B!(Y, H::Magnus4State, B)
+
+function A_mul_B!(Y, H::Magnus4State, B)
     X = H.s 
     A_mul_B!(X, H.H1, B)
     Y[:] = 0.5*X[:]
@@ -661,7 +665,7 @@ function full(H::Magnus4State)
     0.5*(H1+H2)-H.f_dt*(H1*H2-H2*H1)
 end
 
-function LinearAlgebra.A_mul_B!(Y, H::Magnus4DerivativeState, B)
+function A_mul_B!(Y, H::Magnus4DerivativeState, B)
     X = H.s 
     X1 = H.s1
 
@@ -811,17 +815,20 @@ struct EquidistantTimeStepper
     tend::Float64
     dt::Float64
     scheme
+    use_expm::Bool
     wsp  :: Array{Complex{Float64},1}  # workspace for expokit
     iwsp :: Array{Int32,1}    # workspace for expokit
     function EquidistantTimeStepper(H::TimeDependentMatrix, 
                  psi::Array{Complex{Float64},1},
-                 t0::Real, tend::Real, dt::Real; scheme=CF4)
+                 t0::Real, tend::Real, dt::Real;
+                 scheme=CF4,
+                 use_expm::Bool=false)
 
         # allocate workspace
         lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
         wsp = zeros(Complex{Float64}, lwsp)
         iwsp = zeros(Int32, liwsp) 
-        new(H, psi, t0, tend, dt, scheme, wsp, iwsp)
+        new(H, psi, t0, tend, dt, scheme, use_expm, wsp, iwsp)
     end
 end
 
@@ -835,10 +842,68 @@ function Base.done(ets::EquidistantTimeStepper, t)
 end
 
 function Base.next(ets::EquidistantTimeStepper, t)
-    step!(ets.psi, ets.H, t, ets.dt, ets.scheme, ets.wsp, ets.iwsp)
+    step!(ets.psi, ets.H, t, ets.dt, ets.scheme, ets.wsp, ets.iwsp, use_expm=ets.use_expm)
     t1 = t + ets.dt < ets.tend ? t + ets.dt : ets.tend
     t1, t1
 end
+
+
+struct EquidistantCorrectedTimeStepper
+    H::TimeDependentMatrix
+    psi::Array{Complex{Float64},1}
+    t0::Float64
+    tend::Float64
+    dt::Float64
+    scheme
+    symmetrized_defect::Bool
+    trapezoidal_rule::Bool
+    use_expm::Bool
+    psi_est::Array{Complex{Float64},1}
+    wsp  :: Array{Complex{Float64},1}  # workspace for expokit
+    iwsp :: Array{Int32,1}    # workspace for expokit
+
+    function EquidistantCorrectedTimeStepper(H::TimeDependentMatrix, 
+                 psi::Array{Complex{Float64},1},
+                 t0::Real, tend::Real, dt::Real; 
+                 scheme=CF4,
+                 symmetrized_defect::Bool=false,
+                 trapezoidal_rule::Bool=false, 
+                 use_expm::Bool=false)
+
+        # allocate workspace
+        lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
+        wsp = zeros(Complex{Float64}, lwsp)
+        iwsp = zeros(Int32, liwsp) 
+
+        psi_est = zeros(Complex{Float64}, size(H, 2))
+        
+        new(H, psi, t0, tend, dt, scheme, 
+            symmetrized_defect, trapezoidal_rule, use_expm, 
+            psi_est, wsp, iwsp)
+    end
+end
+
+Base.start(ets::EquidistantCorrectedTimeStepper) = ets.t0
+
+function Base.done(ets::EquidistantCorrectedTimeStepper, t) 
+    if t >= ets.tend
+        return true
+    end
+    false
+end
+
+function Base.next(ets::EquidistantCorrectedTimeStepper, t)
+    step_estimated!(ets.psi, ets.psi_est, ets.H, t, ets.dt, ets.scheme, ets.wsp, ets.iwsp,
+                        symmetrized_defect=ets.symmetrized_defect,
+                        trapezoidal_rule=ets.trapezoidal_rule,
+                        use_expm=ets.use_expm)
+    ets.psi[:] -= ets.psi_est # corrected scheme                        
+    t1 = t + ets.dt < ets.tend ? t + ets.dt : ets.tend
+    t1, t1
+end
+
+
+
 
 using Printf
 
@@ -867,7 +932,7 @@ function local_orders(H::TimeDependentMatrix,
     println("-----------------------------------")
     for row=1:rows
         step!(psi, H, t0, dt1, scheme, wsp, iwsp, use_expm=use_expm)
-        psi_ref = copy(wf_save_initial_value)
+        copyto!(psi_ref, wf_save_initial_value)
         dt1_ref = dt1/reference_steps
         for k=1:reference_steps
             step!(psi_ref, H, t0+(k-1)*dt1_ref, dt1_ref, reference_scheme, wsp, iwsp, use_expm=use_expm)
@@ -887,7 +952,7 @@ function local_orders(H::TimeDependentMatrix,
         end
         err_old = err
         dt1 = 0.5*dt1
-        psi = copy(wf_save_initial_value)
+        copyto!(psi, wf_save_initial_value)
     end
 
     tab
@@ -928,7 +993,7 @@ function local_orders_est(H::TimeDependentMatrix,
                         trapezoidal_rule=trapezoidal_rule,
                         modified_Gamma=modified_Gamma,
                         use_expm=use_expm)
-        psi_ref = copy(wf_save_initial_value)
+        copyto!(psi_ref, wf_save_initial_value)
         dt1_ref = dt1/reference_steps
         for k=1:reference_steps
             step!(psi_ref, H, t0+(k-1)*dt1_ref, dt1_ref, reference_scheme, wsp, iwsp, use_expm=use_expm)
@@ -957,10 +1022,64 @@ function local_orders_est(H::TimeDependentMatrix,
         err_old = err
         err_est_old = err_est
         dt1 = 0.5*dt1
-        psi = copy(wf_save_initial_value)
+        copyto!(psi, wf_save_initial_value)
     end
 
     tab
+end
+
+
+function global_orders(H::TimeDependentMatrix,
+                      psi::Array{Complex{Float64},1}, 
+                      psi_ref::Array{Complex{Float64},1}, 
+                      t0::Real, tend::Real, dt::Real; 
+                      scheme=CF2, rows=8,
+                      use_expm::Bool=false,
+                      corrected_scheme::Bool=false,
+                      symmetrized_defect::Bool=false,
+                      trapezoidal_rule::Bool=false)
+    tab = zeros(Float64, rows, 3)
+
+    # allocate workspace
+    lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
+    wsp = zeros(Complex{Float64}, lwsp)
+    iwsp = zeros(Int32, liwsp) 
+
+    wf_save_initial_value = copy(psi)
+
+    dt1 = dt
+    err_old = 0.0
+    println("             dt         err           C      p ")
+    println("-----------------------------------------------")
+    for row=1:rows
+        if corrected_scheme
+            ets = EquidistantCorrectedTimeStepper(H, psi, t0, tend, dt1, 
+                    scheme=scheme, symmetrized_defect=symmetrized_defect,
+                    trapezoidal_rule=trapezoidal_rule, use_expm=use_expm)
+        else            
+            ets = EquidistantTimeStepper(H, psi, t0, tend, dt1, 
+                    scheme=scheme, use_expm=use_expm)
+        end
+        for t in ets end
+        err = norm(psi-psi_ref)
+        if (row==1) 
+            @Printf.printf("%3i%12.3e%12.3e\n", row, Float64(dt1), Float64(err))
+            tab[row,1] = dt1
+            tab[row,2] = err
+            tab[row,3] = 0 
+        else
+            p = log(err_old/err)/log(2.0)
+            C = err/dt1^p
+            @Printf.printf("%3i%12.3e%12.3e%12.3e%7.2f\n", row, Float64(dt1), Float64(err),
+                                                       Float64(C), Float64(p))
+            tab[row,1] = dt1
+            tab[row,2] = err
+            tab[row,3] = p 
+        end
+        err_old = err
+        dt1 = 0.5*dt1
+        copyto!(psi, wf_save_initial_value)
+    end
 end
 
 
