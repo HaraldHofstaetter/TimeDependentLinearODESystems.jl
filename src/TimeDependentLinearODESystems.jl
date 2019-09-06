@@ -7,7 +7,7 @@ export expmv, expvmv!
 export TimeDependentMatrixState, TimeDependentSchroedingerMatrixState
 export TimeDependentMatrix, TimeDependentSchroedingerMatrix
 export CommutatorFree_Scheme
-export CF2, CF4, CF4o, CF6, CF7, CF8, CF8C, CF8AF,  CF10, DoPri45, Magnus4
+export CF2, CF4, CF4o, CF6, CF6n, CF7, CF8, CF8C, CF8AF,  CF10, DoPri45, Magnus4
 export get_order, number_of_exponentials
 export load_example
 export EquidistantTimeStepper, local_orders, local_orders_est
@@ -70,6 +70,13 @@ CF6 = CommutatorFreeScheme(
   [1/2-sqrt(15)/10, 1/2, 1/2+sqrt(15)/10],
   6)
 
+CF6n = CommutatorFreeScheme(
+  [ 7.9124225942889763e-01 -8.0400755305553218e-02  1.2765293626634554e-02
+   -4.8931475164583259e-01  5.4170980027798808e-02 -1.2069823881924156e-02
+   -2.9025638294289255e-02  5.0138457552775674e-01 -2.5145341733509552e-02
+    4.8759082890019896e-03 -3.0710355805557892e-02  3.0222764976657693e-01],
+  [1/2-sqrt(15)/10, 1/2, 1/2+sqrt(15)/10],
+  6)
 
 CF7 = CommutatorFreeScheme(
  [ 2.05862188450411892209e-01    1.69508382914682544509e-01   -1.02088008415028059851e-01    3.04554010755044437431e-02 
