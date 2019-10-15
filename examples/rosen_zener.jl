@@ -72,11 +72,10 @@ function (H::RosenZener)(t::Vector{Float64}, c::Vector{Float64};
     RosenZenerState(matrix_times_minus_i, compute_derivative, c1, c2, H)
 end
 
-import Base: eltype, size, full
 
 
 
-function A_mul_B!(Y, H::RosenZenerState, B)
+function LinearAlgebra.mul!(Y, H::RosenZenerState, B)
     Y[:] = H.c1*(H.H.H1*B) + H.c2*(H.H.H2*B)
     if H.matrix_times_minus_i
         Y[:] *= -1im
@@ -84,16 +83,16 @@ function A_mul_B!(Y, H::RosenZenerState, B)
 end
 
 
-size(H::RosenZener) = (H.d, H.d)
-size(H::RosenZener, dim::Int) = dim < 1 ? error("arraysize: dimension out of range") :
+LinearAlgebra.size(H::RosenZener) = (H.d, H.d)
+LinearAlgebra.size(H::RosenZener, dim::Int) = dim < 1 ? error("arraysize: dimension out of range") :
                                           (dim < 3 ? H.d : 1)
-size(H::RosenZenerState) = size(H.H)
-size(H::RosenZenerState, dim::Int) = size(H.H, dim)
+LinearAlgebra.size(H::RosenZenerState) = size(H.H)
+LinearAlgebra.size(H::RosenZenerState, dim::Int) = size(H.H, dim)
 
-eltype(H::RosenZenerState) = Complex{Float64}
-issymmetric(H::RosenZenerState) = !H.matrix_times_minus_i && H.c2==0.0 
-ishermitian(H::RosenZenerState) = !H.matrix_times_minus_i 
-checksquare(H::RosenZenerState) = H.H.d
+LinearAlgebra.eltype(H::RosenZenerState) = Complex{Float64}
+LinearAlgebra.issymmetric(H::RosenZenerState) = !H.matrix_times_minus_i && H.c2==0.0 
+LinearAlgebra.ishermitian(H::RosenZenerState) = !H.matrix_times_minus_i 
+LinearAlgebra.checksquare(H::RosenZenerState) = H.H.d
 
 function LinearAlgebra.norm(H::RosenZenerState, p::Real=2)
     if p==2

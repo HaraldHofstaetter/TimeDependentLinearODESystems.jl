@@ -1,7 +1,6 @@
 module TimeDependentLinearODESystems
 
 using LinearAlgebra
-import Base: eltype, size, full
 
 export expmv, expvmv!
 export TimeDependentMatrixState, TimeDependentSchroedingerMatrixState
@@ -13,7 +12,6 @@ export load_example
 export EquidistantTimeStepper, local_orders, local_orders_est
 export AdaptiveTimeStepper, EquidistantCorrectedTimeStepper
 export global_orders, global_orders_corr
-export norm0, Gamma!
 
 
 abstract type TimeDependentMatrixState end
@@ -179,7 +177,6 @@ CF10 = CommutatorFreeScheme(
 
 
 norm0(H::T) where {T<:TimeDependentMatrixState} = norm(H, 1)
-#full(H::T) where {T<:TimeDependentMatrixState} = 
 
 
 function step!(psi::Union{Array{Float64,1},Array{Complex{Float64},1}}, 
@@ -237,124 +234,124 @@ function Gamma!(r::Vector{Complex{Float64}},
         end
     end
     #s2=B*u
-    A_mul_B!(s2, H, u)
+    mul!(s2, H, u)
     r[:] = s2[:] 
     if p>=1
         #s1=A*u
-        A_mul_B!(s1, Hd, u)
+        mul!(s1, Hd, u)
         r[:] += f1*s1[:] 
     end
     if p>=2
         #s1=B*s1=BAu
-        A_mul_B!(s1a, H, s1)
+        mul!(s1a, H, s1)
         r[:] += f2*s1a[:] 
     end
     if p>=3
         #s1=B*s1=BBAu
-        A_mul_B!(s1, H, s1a)
+        mul!(s1, H, s1a)
         r[:] += f3*s1[:] 
     end
     if p>=4
         #s1=B*s1=BBBAu
-        A_mul_B!(s1a, H, s1)
+        mul!(s1a, H, s1)
         r[:] += f4*s1a[:] 
     end
     if p>=5
         #s1=B*s1=BBBBAu
-        A_mul_B!(s1, H, s1a)
+        mul!(s1, H, s1a)
         r[:] += f5*s1[:] 
     end
     if p>=6
         #s1=B*s1=BBBBBAu
-        A_mul_B!(s1a, H, s1)
+        mul!(s1a, H, s1)
         r[:] += f6*s1a[:] 
     end
 
     if p>=2
         #s1=A*s2=ABu
-        A_mul_B!(s1, Hd, s2)
+        mul!(s1, Hd, s2)
         r[:] -= f2*s1[:] 
     end
     if p>=3
         #s1=B*s1=BABu
-        A_mul_B!(s1a, H, s1)
+        mul!(s1a, H, s1)
         r[:] -= (2*f3)*s1a[:] 
     end
     if p>=4
         #s1=B*s1=BBABu
-        A_mul_B!(s1, H, s1a)
+        mul!(s1, H, s1a)
         r[:] -= (3*f4)*s1[:] 
     end
     if p>=5
         #s1=B*s1=BBBABu
-        A_mul_B!(s1a, H, s1)
+        mul!(s1a, H, s1)
         r[:] -= (4*f5)*s1a[:] 
     end
     if p>=6
         #s1=B*s1=BBBBABu
-        A_mul_B!(s1, H, s1a)
+        mul!(s1, H, s1a)
         r[:] -= (5*f6)*s1[:] 
     end
 
     if p>=3
         #s2=B*s2=BBu
-        A_mul_B!(s2a, H, s2)
+        mul!(s2a, H, s2)
         #s1=A*s2=ABBu
-        A_mul_B!(s1, Hd, s2a)
+        mul!(s1, Hd, s2a)
         r[:] += f3*s1
     end
     if p>=4
         #s1=B*s1=BABBu
-        A_mul_B!(s1a, H, s1)
+        mul!(s1a, H, s1)
         r[:] += (3*f4)*s1a
     end
     if p>=5
         #s1=B*s1=BBABBu
-        A_mul_B!(s1, H, s1a)
+        mul!(s1, H, s1a)
         r[:] += (6*f5)*s1
     end
     if p>=6
         #s1=B*s1=BBBABBu
-        A_mul_B!(s1a, H, s1)
+        mul!(s1a, H, s1)
         r[:] += (10*f6)*s1a
     end
 
     if p>=4
         #s2=B*s2=BBBu
-        A_mul_B!(s2, H, s2a)
+        mul!(s2, H, s2a)
         #s1=A*s2=ABBBu
-        ;  A_mul_B!(s1, Hd, s2)
+        ;  mul!(s1, Hd, s2)
         r[:] -= f4*s1
     end
     if p>=5
         #s1=B*s1=BABBBu
-        A_mul_B!(s1a, H, s1)
+        mul!(s1a, H, s1)
         r[:] -= (4*f5)*s1a
     end
     if p>=6
         #s1=B*s1=BBABBBu
-        A_mul_B!(s1, H, s1a)
+        mul!(s1, H, s1a)
         r[:] -= (10*f6)*s1
     end
 
     if p>=5
         #s2=B*s2=BBBBu
-        A_mul_B!(s2a, H, s2)
+        mul!(s2a, H, s2)
         #s1=A*s2=ABBBBu
-        A_mul_B!(s1, Hd, s2a)
+        mul!(s1, Hd, s2a)
         r[:] += f5*s1
     end
     if p>=6
         #s1=B*s1=BABBBBu
-        A_mul_B!(s1a, H, s1)
+        mul!(s1a, H, s1)
         r[:] += (5*f6)*s1a
     end
 
     if p>=6
         #s2=B*s2=BBBBBu
-        A_mul_B!(s2, H, s2a)
+        mul!(s2, H, s2a)
         #s1=A*s2=ABBBBBu
-        A_mul_B!(s1, Hd, s2)
+        mul!(s1, Hd, s2)
         r[:] -= f6*s1
     end
 end
@@ -363,13 +360,13 @@ function CC!(r::Vector{Complex{Float64}},
              H::TimeDependentMatrixState, Hd::TimeDependentMatrixState,
              u::Vector{Complex{Float64}}, sign::Int, dt::Float64, 
              s::Vector{Complex{Float64}}, s1::Vector{Complex{Float64}})
-    A_mul_B!(s, Hd, u)
+    mul!(s, Hd, u)
     r[:] = 0.5*dt*s[:]
-    A_mul_B!(s1, H, s)
+    mul!(s1, H, s)
     r[:] += (sign*dt^2/12)*s1
-    A_mul_B!(s, H, u)
+    mul!(s, H, u)
     r[:] += 0.5*s[:]
-    A_mul_B!(s1, Hd, s)
+    mul!(s1, Hd, s)
     r[:] -= (sign*dt^2/12)*s1
 end
 
@@ -384,7 +381,7 @@ function step_estimated_CF2_trapezoidal_rule!(psi::Array{Complex{Float64},1}, ps
     s = unsafe_wrap(Array, pointer(wsp, 1), n, own=false)
 
     H1d = H(t+0.5*dt, matrix_times_minus_i=true, compute_derivative=true)
-    A_mul_B!(psi_est, H1d, psi)
+    mul!(psi_est, H1d, psi)
     psi_est[:] *= 0.25*dt
 
     H1 = H(t+0.5*dt, matrix_times_minus_i=false)
@@ -399,15 +396,15 @@ function step_estimated_CF2_trapezoidal_rule!(psi::Array{Complex{Float64},1}, ps
     end
 
     H1 = H(t+0.5*dt, matrix_times_minus_i=true)
-    A_mul_B!(s, H1, psi)
+    mul!(s, H1, psi)
     psi_est[:] += s[:]
 
     H1 = H(t+dt, matrix_times_minus_i=true)
-    A_mul_B!(s, H1, psi)
+    mul!(s, H1, psi)
     psi_est[:] -= s[:]
 
     H1d = H(t+0.5*dt, matrix_times_minus_i=true, compute_derivative=true)
-    A_mul_B!(s, H1d, psi)
+    mul!(s, H1d, psi)
     psi_est[:] += 0.25*dt*s[:]
 
     psi_est[:] *= dt/3
@@ -425,7 +422,7 @@ function step_estimated_CF2_symm_def!(psi::Array{Complex{Float64},1}, psi_est::A
     s = unsafe_wrap(Array, pointer(wsp, 1), n, own=false)
 
     H1 = H(t, matrix_times_minus_i=true)
-    A_mul_B!(psi_est, H1, psi)
+    mul!(psi_est, H1, psi)
     psi_est[:] *= -0.5
 
     H1 = H(t+0.5*dt, matrix_times_minus_i=false)
@@ -440,11 +437,11 @@ function step_estimated_CF2_symm_def!(psi::Array{Complex{Float64},1}, psi_est::A
     end
     
     H1 = H(t+0.5*dt, matrix_times_minus_i=true)
-    A_mul_B!(s, H1, psi)
+    mul!(s, H1, psi)
     psi_est[:] += s[:]
 
     H1 = H(t+dt, matrix_times_minus_i=true)
-    A_mul_B!(s, H1, psi)
+    mul!(s, H1, psi)
     s[:] *= 0.5
     psi_est[:] -= s[:]
     
@@ -479,7 +476,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
 
     if symmetrized_defect
         H1 = H(t, matrix_times_minus_i=true)
-        A_mul_B!(psi_est, H1, psi)
+        mul!(psi_est, H1, psi)
         psi_est[:] *= -0.5
     else
         psi_est[:] .= 0.0
@@ -523,7 +520,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     end
    
     H1 = H(t+dt, matrix_times_minus_i=true)
-    A_mul_B!(s, H1, psi)
+    mul!(s, H1, psi)
     if symmetrized_defect
         s[:] *= 0.5
     end
@@ -556,7 +553,7 @@ function step_estimated!(psi::T,
 
     if symmetrized_defect
         H1 = H(t)
-        A_mul_B!(psi_est, H1, psi)
+        mul!(psi_est, H1, psi)
         psi_est[:] *= -0.5
         
         H1 = H(tt, scheme.A[1,:])
@@ -608,7 +605,7 @@ function step_estimated!(psi::T,
    
     #  s = A(t+dt)*psi
     H1 = H(t+dt)
-    A_mul_B!(s, H1, psi)
+    mul!(s, H1, psi)
     #  psi_est = psi_est-s
     psi_est[:] -= s[:]
 
@@ -654,7 +651,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
               end
           end
           H1 = H(t+c[l]*dt)
-          A_mul_B!(K[l], H1, s)
+          mul!(K[l], H1, s)
       end
       psi[:] = s[:]
       s[:] = 0.0
@@ -664,7 +661,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
           end
       end
       H1 = H(t+dt)
-      A_mul_B!(psi_est, H1, s)
+      mul!(psi_est, H1, s)
       #psi_est[:] -= psi[:]
       # TODO: K[7] can be reused as K[1] for the next step (FSAL, first same as last)
 end
@@ -704,31 +701,31 @@ mutable struct Magnus4DerivativeState <: TimeDependentMatrixState
 end
 
 
-size(H::Magnus4State) = size(H.H1)
-size(H::Magnus4State, dim::Int) = size(H.H1, dim) 
-eltype(H::Magnus4State) = eltype(H.H1) 
-issymmetric(H::Magnus4State) = issymmetric(H.H1) # TODO: check 
-ishermitian(H::Magnus4State) = ishermitian(H.H1) # TODO: check 
-checksquare(H::Magnus4State) = checksquare(H.H1)
+LinearAlgebra.size(H::Magnus4State) = size(H.H1)
+LinearAlgebra.size(H::Magnus4State, dim::Int) = size(H.H1, dim) 
+LinearAlgebra.eltype(H::Magnus4State) = eltype(H.H1) 
+LinearAlgebra.issymmetric(H::Magnus4State) = issymmetric(H.H1) # TODO: check 
+LinearAlgebra.ishermitian(H::Magnus4State) = ishermitian(H.H1) # TODO: check 
+LinearAlgebra.checksquare(H::Magnus4State) = checksquare(H.H1)
 
-size(H::Magnus4DerivativeState) = size(H.H1)
-size(H::Magnus4DerivativeState, dim::Int) = size(H.H1, dim) 
-eltype(H::Magnus4DerivativeState) = eltype(H.H1) 
-issymmetric(H::Magnus4DerivativeState) = issymmetric(H.H1) # TODO: check 
-ishermitian(H::Magnus4DerivativeState) = ishermitian(H.H1) # TODO: check 
-checksquare(H::Magnus4DerivativeState) = checksquare(H.H1)
+LinearAlgebra.size(H::Magnus4DerivativeState) = size(H.H1)
+LinearAlgebra.size(H::Magnus4DerivativeState, dim::Int) = size(H.H1, dim) 
+LinearAlgebra.eltype(H::Magnus4DerivativeState) = eltype(H.H1) 
+LinearAlgebra.issymmetric(H::Magnus4DerivativeState) = issymmetric(H.H1) # TODO: check 
+LinearAlgebra.ishermitian(H::Magnus4DerivativeState) = ishermitian(H.H1) # TODO: check 
+LinearAlgebra.checksquare(H::Magnus4DerivativeState) = checksquare(H.H1)
 
 
 
-function A_mul_B!(Y, H::Magnus4State, B)
+function LinearAlgebra.mul!(Y, H::Magnus4State, B)
     X = H.s 
-    A_mul_B!(X, H.H1, B)
+    mul!(X, H.H1, B)
     Y[:] = 0.5*X[:]
-    A_mul_B!(X, H.H2, X)
+    mul!(X, H.H2, X)
     Y[:] += H.f_dt*X[:]
-    A_mul_B!(X, H.H2, B)
+    mul!(X, H.H2, B)
     Y[:] += 0.5*X[:]
-    A_mul_B!(X, H.H1, X)
+    mul!(X, H.H1, X)
     Y[:] -= H.f_dt*X[:]
 end
 
@@ -738,30 +735,30 @@ function full(H::Magnus4State)
     0.5*(H1+H2)-H.f_dt*(H1*H2-H2*H1)
 end
 
-function A_mul_B!(Y, H::Magnus4DerivativeState, B)
+function LinearAlgebra.mul!(Y, H::Magnus4DerivativeState, B)
     X = H.s 
     X1 = H.s1
 
-    A_mul_B!(X, H.H1d, B)
+    mul!(X, H.H1d, B)
     Y[:] = (0.5*H.c1)*X[:]
-    A_mul_B!(X, H.H2, X)
+    mul!(X, H.H2, X)
     Y[:] += (H.f*H.c1*H.dt)*X[:]
 
-    A_mul_B!(X, H.H2d, B)
+    mul!(X, H.H2d, B)
     Y[:] += (0.5*H.c2)*X[:] 
-    A_mul_B!(X, H.H1, X)
+    mul!(X, H.H1, X)
     Y[:] -= (H.f*H.c2*H.dt)*X[:]
 
-    A_mul_B!(X, H.H1, B)
-    A_mul_B!(X1, H.H2, X)
+    mul!(X, H.H1, B)
+    mul!(X1, H.H2, X)
     Y[:] += H.f*X1[:]
-    A_mul_B!(X1, H.H2d, X)
+    mul!(X1, H.H2d, X)
     Y[:] += (H.f*H.c2*H.dt)*X1[:]
 
-    A_mul_B!(X, H.H2, B)
-    A_mul_B!(X1, H.H1, X)
+    mul!(X, H.H2, B)
+    mul!(X1, H.H1, X)
     Y[:] -= H.f*X1[:]
-    A_mul_B!(X1, H.H1d, X)
+    mul!(X1, H.H1d, X)
     Y[:] -= (H.f*H.c1*H.dt)*X1[:]
 end
 
@@ -823,7 +820,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     if symmetrized_defect
         HHd = Magnus4DerivativeState(H1, H2, H1d, H2d, dt, f, c1-1/2, c2-1/2, s3, s4)
         H1 = H(t, matrix_times_minus_i=true)
-        A_mul_B!(psi_est, H1, psi)
+        mul!(psi_est, H1, psi)
         psi_est[:] *= -0.5
     else
         HHd = Magnus4DerivativeState(H1, H2, H1d, H2d, dt, f, c1, c2, s3, s4)
@@ -871,7 +868,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     end
 
     H1 = H(t + dt, matrix_times_minus_i=true)
-    A_mul_B!(s, H1, psi)
+    mul!(s, H1, psi)
     if symmetrized_defect
         s[:] *= 0.5
     end
@@ -905,16 +902,11 @@ struct EquidistantTimeStepper
     end
 end
 
-Base.start(ets::EquidistantTimeStepper) = ets.t0
 
-function Base.done(ets::EquidistantTimeStepper, t) 
+function Base.iterate(ets::EquidistantTimeStepper, t=ets.t0)
     if t >= ets.tend
-        return true
+        return nothing
     end
-    false
-end
-
-function Base.next(ets::EquidistantTimeStepper, t)
     step!(ets.psi, ets.H, t, ets.dt, ets.scheme, ets.wsp, ets.iwsp, use_expm=ets.use_expm)
     t1 = t + ets.dt < ets.tend ? t + ets.dt : ets.tend
     t1, t1
@@ -956,16 +948,11 @@ struct EquidistantCorrectedTimeStepper
     end
 end
 
-Base.start(ets::EquidistantCorrectedTimeStepper) = ets.t0
 
-function Base.done(ets::EquidistantCorrectedTimeStepper, t) 
+function Base.iterate(ets::EquidistantCorrectedTimeStepper, t=ets.t0)
     if t >= ets.tend
-        return true
+        return nothing
     end
-    false
-end
-
-function Base.next(ets::EquidistantCorrectedTimeStepper, t)
     step_estimated!(ets.psi, ets.psi_est, ets.H, t, ets.dt, ets.scheme, ets.wsp, ets.iwsp,
                         symmetrized_defect=ets.symmetrized_defect,
                         trapezoidal_rule=ets.trapezoidal_rule,
@@ -974,8 +961,6 @@ function Base.next(ets::EquidistantCorrectedTimeStepper, t)
     t1 = t + ets.dt < ets.tend ? t + ets.dt : ets.tend
     t1, t1
 end
-
-
 
 
 using Printf
@@ -1202,16 +1187,12 @@ struct AdaptiveTimeStepperState
    dt::Real
 end   
 
-Base.start(ats::AdaptiveTimeStepper) = AdaptiveTimeStepperState(ats.t0, ats.dt)
-
-function Base.done(ats::AdaptiveTimeStepper, state::AdaptiveTimeStepperState)
+function Base.iterate(ats::AdaptiveTimeStepper, 
+                      state::AdaptiveTimeStepperState=AdaptiveTimeStepperState(ats.t0, ats.dt))
     if state.t >= ats.tend
-        return true
+        return nothing
     end
-    false
-end  
 
-function Base.next(ats::AdaptiveTimeStepper, state::AdaptiveTimeStepperState)
     facmin = 0.25
     facmax = 4.0
     fac = 0.9
@@ -1236,6 +1217,7 @@ function Base.next(ats::AdaptiveTimeStepper, state::AdaptiveTimeStepperState)
     end
     state.t + dt0, AdaptiveTimeStepperState(state.t+dt0, dt)
 end
+
 
 
 

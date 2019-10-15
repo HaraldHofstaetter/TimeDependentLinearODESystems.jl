@@ -1,3 +1,12 @@
+using LinearAlgebra
+using SparseArrays
+using Combinatorics
+using Distributed
+using Arpack
+
+export Hubbard, HubbardState
+export energy, groundstate, double_occupation, full
+
 mutable struct Hubbard <: TimeDependentSchroedingerMatrix 
     N_s    :: Int
     n_up   :: Int
@@ -25,6 +34,14 @@ mutable struct Hubbard <: TimeDependentSchroedingerMatrix
     fd :: Function
 
     norm0 :: Float64  # Inf-Norm of H for fac_diag = fac_offdiag = 1, needed by expokit
+
+   # function Hubbard(N_s::Int, n_up::Int, n_down::Int,
+   #              v_symm::Array{Float64,2}, v_anti::Array{Float64,2}, 
+   #              U::Real, f::Function, fd::Function; 
+   #              store_full_matrices::Bool=false)
+   #     _hubbard(N_s, n_up, n_down, v_symm, v_anti, U, f, fd, store_full_matrices) 
+   # end
+
 end
 
 
@@ -66,10 +83,6 @@ function (H::Hubbard)(t::Vector{Float64}, c::Vector{Float64};
     HubbardState(matrix_times_minus_i, compute_derivative, fac_diag, fac_offdiag, H)
 end
 
-
-
-
-using Combinatorics
 
 function comb_to_bitarray(N::Int, a::Array{Int,1})
     b = falses(N)
@@ -211,6 +224,7 @@ function gen_H_upper_step(i_up::Int, H::Hubbard, nn, I, J, x_symm, x_anti)
     end
 end
 
+
 function gen_H_upper_parallel(H::Hubbard)
     nn = get_dims(H)
     I = SharedArray{Int,1}(H.N_nz)
@@ -234,7 +248,7 @@ end
 
 function gen_H_diag_parallel(H::Hubbard)
     d = SharedArray{Float64,1}(H.N_psi)
-    @parallel for i_up = 1:H.N_up 
+    @distributed for i_up = 1:H.N_up 
         psi_up = H.tab_inv_up[i_up]
         x_up = sum([ H.v_symm[k,k] for k=1:H.N_s if psi_up[k] ]) 
 
@@ -313,7 +327,8 @@ function gen_H_diag(H::Hubbard)
 end
 
 
-function hubbard(N_s::Int, n_up::Int, n_down::Int, v_symm::Array{Float64,2}, v_anti::Array{Float64,2}, 
+function Hubbard(N_s::Int, n_up::Int, n_down::Int, 
+                 v_symm::Array{Float64,2}, v_anti::Array{Float64,2}, 
                  U::Real, f::Function, fd::Function; 
                  store_full_matrices::Bool=false)
     N_up = binomial(N_s, n_up)
@@ -368,11 +383,11 @@ end
 
 double_occupation(H::HubbardState, psi::Union{Array{Complex{Float64},1},Array{Float64,1}}) = double_occupation(H.H, psi)
 
-import Base.LinAlg: A_mul_B!, issymmetric, ishermitian, checksquare
-import Base: eltype, size, norm, full
+#import Base.LinAlg: A_mul_B!, issymmetric, ishermitian, checksquare
+#import Base: eltype, size, norm, full
 
 
-function A_mul_B!(Y, H::HubbardState, B)
+function LinearAlgebra.mul!(Y, H::HubbardState, B)
     fac_symm = real(H.fac_offdiag)
     fac_anti = imag(H.fac_offdiag)
 
@@ -396,16 +411,17 @@ function A_mul_B!(Y, H::HubbardState, B)
 
 end
 
-size(H::Hubbard) = (H.N_psi, H.N_psi)
-size(H::Hubbard, dim::Int) = dim<1?error("arraysize: dimension out of range"):
-                                       (dim<3?H.N_psi:1)
-size(H::HubbardState) = size(H.H)
-size(H::HubbardState, dim::Int) = size(H.H, dim)
+LinearAlgebra.size(H::Hubbard) = (H.N_psi, H.N_psi)
+LinearAlgebra.size(H::Hubbard, dim::Int) = dim<1 ? 
+      error("arraysize: dimension out of range") :
+      (dim<3 ? H.N_psi : 1)
+LinearAlgebra.size(H::HubbardState) = size(H.H)
+LinearAlgebra.size(H::HubbardState, dim::Int) = size(H.H, dim)
 
-eltype(H::HubbardState) = imag(H.fac_offdiag)==0.0?Float64:Complex{Float64}
-issymmetric(H::HubbardState) = imag(H.fac_offdiag)==0.0 
-ishermitian(H::HubbardState) = !H.matrix_times_minus_i 
-checksquare(H::HubbardState) = H.H.N_psi 
+LinearAlgebra.eltype(H::HubbardState) = imag(H.fac_offdiag)==0.0 ? Float64 : Complex{Float64}
+LinearAlgebra.issymmetric(H::HubbardState) = imag(H.fac_offdiag)==0.0 
+LinearAlgebra.ishermitian(H::HubbardState) = !H.matrix_times_minus_i 
+LinearAlgebra.checksquare(H::HubbardState) = H.H.N_psi 
 
 
 function groundstate(H::HubbardState)
@@ -415,13 +431,13 @@ function groundstate(H::HubbardState)
 end
 
 function energy(H::HubbardState, psi::Union{Array{Complex{Float64},1},Array{Float64,1}})
-    T = imag(H.fac_offdiag)!=0.0?Complex{Float64}:eltype(psi)
+    T = imag(H.fac_offdiag)!=0.0 ? Complex{Float64} : eltype(psi)
     psi1 = zeros(T, H.H.N_psi)
-    A_mul_B!(psi1, H, psi)
+    mul!(psi1, H, psi)
     real(dot(psi,psi1))
 end
 
-function norm(H::HubbardState, p::Real=2)
+function LinearAlgebra.norm(H::HubbardState, p::Real=2)
     if p==2
         throw(ArgumentError("2-norm not implemented for Hubbard. Try norm(H, p) where p=1 or Inf."))
     elseif !(p==1 || p==Inf)
@@ -444,18 +460,18 @@ function norm(H::HubbardState, p::Real=2)
     maximum(s)
 end
 
-TimeDependentLinearODESystems.norm0(H::HubbardState)  = H.H.norm0
+norm0(H::HubbardState)  = H.H.norm0
 
 function full(H::HubbardState)
     fac_symm = real(H.fac_offdiag)
     fac_anti = imag(H.fac_offdiag)
 
     if H.H.store_full_matrices
-        return (H.matrix_times_minus_i?-1im:1)*(
-            diagm(H.fac_diag*(H.H.H_diag)) + fac_symm*(H.H.H_upper_symm) + (1im*fac_anti)*(H.H.H_upper_anti)) 
+        return (H.matrix_times_minus_i ? -1im : 1)*(
+            diagm(0 => H.fac_diag*(H.H.H_diag)) + fac_symm*(H.H.H_upper_symm) + (1im*fac_anti)*(H.H.H_upper_anti)) 
     else
-        return (H.matrix_times_minus_i?-1im:1)*(
-            diagm(H.fac_diag*(H.H.H_diag)) + fac_symm*(H.H.H_upper_symm + H.H.H_upper_symm') +  
+        return (H.matrix_times_minus_i ? -1im : 1)*(
+            diagm(0 => H.fac_diag*(H.H.H_diag)) + fac_symm*(H.H.H_upper_symm + H.H.H_upper_symm') +  
             (1im*fac_anti)*(H.H.H_upper_anti - H.H.H_upper_anti'))
     end
 end
