@@ -35,13 +35,6 @@ mutable struct Hubbard <: TimeDependentSchroedingerMatrix
 
     norm0 :: Float64  # Inf-Norm of H for fac_diag = fac_offdiag = 1, needed by expokit
 
-   # function Hubbard(N_s::Int, n_up::Int, n_down::Int,
-   #              v_symm::Array{Float64,2}, v_anti::Array{Float64,2}, 
-   #              U::Real, f::Function, fd::Function; 
-   #              store_full_matrices::Bool=false)
-   #     _hubbard(N_s, n_up, n_down, v_symm, v_anti, U, f, fd, store_full_matrices) 
-   # end
-
 end
 
 
@@ -383,9 +376,6 @@ end
 
 double_occupation(H::HubbardState, psi::Union{Array{Complex{Float64},1},Array{Float64,1}}) = double_occupation(H.H, psi)
 
-#import Base.LinAlg: A_mul_B!, issymmetric, ishermitian, checksquare
-#import Base: eltype, size, norm, full
-
 
 function LinearAlgebra.mul!(Y, H::HubbardState, B)
     fac_symm = real(H.fac_offdiag)
@@ -399,10 +389,10 @@ function LinearAlgebra.mul!(Y, H::HubbardState, B)
         end
     else
         if fac_anti == 0.0
-            Y[:] = H.fac_diag*(H.H.H_diag.*B) + fac_symm*(H.H.H_upper_symm*B + At_mul_B(H.H.H_upper_symm, B)) 
+            Y[:] = H.fac_diag*(H.H.H_diag.*B) + fac_symm*(H.H.H_upper_symm*B + H.H.H_upper_symm'*B)
         else    
-            Y[:] = H.fac_diag*(H.H.H_diag.*B) + fac_symm*(H.H.H_upper_symm*B + At_mul_B(H.H.H_upper_symm, B)) +  
-                                        (1im*fac_anti)*(H.H.H_upper_anti*B - At_mul_B(H.H.H_upper_anti, B))
+            Y[:] = H.fac_diag*(H.H.H_diag.*B) + fac_symm*(H.H.H_upper_symm*B + H.H.H_upper_symm'*B) +  
+                                        (1im*fac_anti)*(H.H.H_upper_anti*B - H.H.H_upper_anti'*B)
         end
     end
     if H.matrix_times_minus_i
