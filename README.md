@@ -4,5 +4,5 @@
 
 ```julia
 using Pkg
-Pkg.add(PackageSpec(url=("https://github.com/HaraldHofstaetter/TimeDependentLinearODESystems.jl")))
+Pkg.add(PackageSpec(url="https://github.com/HaraldHofstaetter/TimeDependentLinearODESystems.jl"))
 ```
