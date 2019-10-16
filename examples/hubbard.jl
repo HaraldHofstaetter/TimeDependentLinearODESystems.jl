@@ -28,7 +28,7 @@ mutable struct Hubbard <: TimeDependentSchroedingerMatrix
     tab_down     :: Dict{BitArray{1},Int}
     tab_inv_down :: Array{BitArray{1},1}
 
-    store_full_matrices  :: Bool 
+    store_upper_part_only  :: Bool 
 
     f :: Function
     fd :: Function
@@ -323,7 +323,7 @@ end
 function Hubbard(N_s::Int, n_up::Int, n_down::Int, 
                  v_symm::Array{Float64,2}, v_anti::Array{Float64,2}, 
                  U::Real, f::Function, fd::Function; 
-                 store_full_matrices::Bool=false)
+                 store_upper_part_only::Bool=true)
     N_up = binomial(N_s, n_up)
     N_down = binomial(N_s, n_down)
     N_psi = N_up*N_down
@@ -338,7 +338,7 @@ function Hubbard(N_s::Int, n_up::Int, n_down::Int,
     H =  Hubbard(N_s, n_up, n_down, N_up, N_down, N_psi, N_nz,
                            v_symm, v_anti, U, Float64[], spzeros(1,1), spzeros(1,1),
                            tab_up, tab_inv_up, tab_down, tab_inv_down,
-                           store_full_matrices, f, fd, 0.0)
+                           store_upper_part_only, f, fd, 0.0)
     if nprocs()>1
         gen_H_diag_parallel(H)
         gen_H_upper_parallel(H)
@@ -346,7 +346,7 @@ function Hubbard(N_s::Int, n_up::Int, n_down::Int,
         gen_H_diag(H)
         gen_H_upper(H)
     end
-    if store_full_matrices
+    if !store_upper_part_only
         H.H_upper_symm =  H.H_upper_symm + H.H_upper_symm'
         H.H_upper_anti =  H.H_upper_anti - H.H_upper_anti'
     end
@@ -381,18 +381,18 @@ function LinearAlgebra.mul!(Y, H::HubbardState, B)
     fac_symm = real(H.fac_offdiag)
     fac_anti = imag(H.fac_offdiag)
 
-    if H.H.store_full_matrices
-        if fac_anti == 0.0
-            Y[:] = H.fac_diag*(H.H.H_diag.*B) + fac_symm*(H.H.H_upper_symm*B) 
-        else    
-            Y[:] = H.fac_diag*(H.H.H_diag.*B) + fac_symm*(H.H.H_upper_symm*B) + (1im*fac_anti)*(H.H.H_upper_anti*B) 
-        end
-    else
+    if H.H.store_upper_part_only
         if fac_anti == 0.0
             Y[:] = H.fac_diag*(H.H.H_diag.*B) + fac_symm*(H.H.H_upper_symm*B + H.H.H_upper_symm'*B)
         else    
             Y[:] = H.fac_diag*(H.H.H_diag.*B) + fac_symm*(H.H.H_upper_symm*B + H.H.H_upper_symm'*B) +  
                                         (1im*fac_anti)*(H.H.H_upper_anti*B - H.H.H_upper_anti'*B)
+        end
+    else
+        if fac_anti == 0.0
+            Y[:] = H.fac_diag*(H.H.H_diag.*B) + fac_symm*(H.H.H_upper_symm*B) 
+        else    
+            Y[:] = H.fac_diag*(H.H.H_diag.*B) + fac_symm*(H.H.H_upper_symm*B) + (1im*fac_anti)*(H.H.H_upper_anti*B) 
         end
     end
     if H.matrix_times_minus_i
@@ -440,7 +440,7 @@ function LinearAlgebra.norm(H::HubbardState, p::Real=2)
             s[j] += abs(H.H.H_upper_symm.nzval[i])
         end
     end
-    if !H.H.store_full_matrices
+    if H.H.store_upper_part_only
         for i=1:length(H.H.H_upper_symm.nzval)
             s[H.H.H_upper_symm.rowval[i]] += abs(H.H.H_upper_symm.nzval[i])
         end    
@@ -456,13 +456,13 @@ function full(H::HubbardState)
     fac_symm = real(H.fac_offdiag)
     fac_anti = imag(H.fac_offdiag)
 
-    if H.H.store_full_matrices
-        return (H.matrix_times_minus_i ? -1im : 1)*(
-            diagm(0 => H.fac_diag*(H.H.H_diag)) + fac_symm*(H.H.H_upper_symm) + (1im*fac_anti)*(H.H.H_upper_anti)) 
-    else
+    if H.H.store_upper_part_only
         return (H.matrix_times_minus_i ? -1im : 1)*(
             diagm(0 => H.fac_diag*(H.H.H_diag)) + fac_symm*(H.H.H_upper_symm + H.H.H_upper_symm') +  
             (1im*fac_anti)*(H.H.H_upper_anti - H.H.H_upper_anti'))
+    else
+        return (H.matrix_times_minus_i ? -1im : 1)*(
+            diagm(0 => H.fac_diag*(H.H.H_diag)) + fac_symm*(H.H.H_upper_symm) + (1im*fac_anti)*(H.H.H_upper_anti)) 
     end
 end
 
