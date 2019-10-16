@@ -47,6 +47,9 @@ mutable struct HubbardState <: TimeDependentSchroedingerMatrixState
     H::Hubbard
 end
 
+"""
+Represents `H` evaluated at time `t`
+"""
 function (H::Hubbard)(t::Real; compute_derivative::Bool=false,
                                matrix_times_minus_i::Bool=true)
     if  compute_derivative
@@ -60,6 +63,12 @@ function (H::Hubbard)(t::Real; compute_derivative::Bool=false,
     HubbardState(matrix_times_minus_i, compute_derivative, fac_diag, fac_offdiag, H)
 end
 
+"""
+Represents a linear combination `c[1] H(t[1]) + c[2] H(t[2]) + ...`
+
+This is needed for the integration routine, where `c` are the weights
+and `t` are the points needed in evaluation.
+"""
 function (H::Hubbard)(t::Vector{Float64}, c::Vector{Float64};
                       compute_derivative::Bool=false,
                       matrix_times_minus_i::Bool=true)
@@ -376,7 +385,9 @@ end
 
 double_occupation(H::HubbardState, psi::Union{Array{Complex{Float64},1},Array{Float64,1}}) = double_occupation(H.H, psi)
 
-
+"""
+Performs matrix multiplication `Y = H * B`.
+"""
 function LinearAlgebra.mul!(Y, H::HubbardState, B)
     fac_symm = real(H.fac_offdiag)
     fac_anti = imag(H.fac_offdiag)
@@ -450,8 +461,10 @@ function LinearAlgebra.norm(H::HubbardState, p::Real=2)
     maximum(s)
 end
 
+"""For backwards compatibility with expokit"""
 norm0(H::HubbardState)  = H.H.norm0
 
+"""Construct dense matrix for state"""
 function full(H::HubbardState)
     fac_symm = real(H.fac_offdiag)
     fac_anti = imag(H.fac_offdiag)

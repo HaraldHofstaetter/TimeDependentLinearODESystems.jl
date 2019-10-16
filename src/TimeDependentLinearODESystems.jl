@@ -14,10 +14,44 @@ export AdaptiveTimeStepper, EquidistantCorrectedTimeStepper
 export global_orders, global_orders_corr
 
 
+"""
+Object representing matrix `B` coming from `A(t)` for concrete t.
+
+**This is not a state vector!**
+
+For derived type `T` One must define:
+ - `LinearAlgebra.size(H::T, dim::Int)`: dimensions of matrix
+ - `LinearAlgebra.eltype(H::T)`: scalar type (Float64)
+ - `LinearAlgebra.issymmetric(H::T)`: true iff matrix is symmetric
+ - `LinearAlgebra.ishermitian(H::T)`: true iff matrix is hermitian
+ - `LinearAlgebra.checksquare(H::T)`: exception if matrix is not square 
+ - `LinearAlgebra.mul!(Y, H::T, B)`: performs `Y = H*B`
+"""
 abstract type TimeDependentMatrixState end
+
+"""
+Object representing matrix `B` coming from `H(t)` for concrete t.
+
+**This is not a state vector!**
+"""
 abstract type TimeDependentSchroedingerMatrixState <: TimeDependentMatrixState end
 
+"""
+Object representing time-dependent matrix `A(t)`.
+
+Given `A::TimeDependentMatrix`, one can do `B=A(t)` to obtain an object
+of type `B::TimeDependentMatrixState`, which represents the matrix `A(t)`
+evaluated at time `t`.
+
+This is used to solve a ODE of the form  `dv(t)/dt = A(t) v(t)`.
+"""
 abstract type TimeDependentMatrix end
+
+"""
+Object representing time-dependent Hamiltonian `H(t)`.
+
+This is used to solve a ODE of the form  `i dv(t)/dt = H(t) v(t)`.
+"""
 abstract type TimeDependentSchroedingerMatrix <: TimeDependentMatrix end
 
 include("expmv.jl")
@@ -29,7 +63,20 @@ load_example(name::String) = include(string(dirname(@__FILE__),"/../examples/",n
 get_lwsp_liwsp_expv(n::Integer, m::Integer=30) = ( max(10, n*(m+1)+n+(m+2)^2+4*(m+2)^2+6+1), max(7, m+2) )
 get_lwsp_liwsp_expv(H, scheme, m::Integer=30) = get_lwsp_liwsp_expv(size(H, 2), m)
 
+"""
+Parameters of integration scheme.
 
+A single time step is then computed from this formula, where `X(t)` is the matrix
+`-i H(t)` and `A` and `c` are the parameters of the scheme.
+
+    psi(t+dt) = product(exp(sum(A[j,k] * X(t + c[k]*dt) for k in 1:K)
+                        for j in J:-1:1) * psi(t)
+
+**Note:** A is now not the matrix in the ODE, and c are not the coefficients of
+the linear combination for evaluating H.
+
+`p` is the order of the scheme.
+"""
 struct CommutatorFreeScheme
     A::Array{Float64,2}
     c::Array{Float64,1}
@@ -39,6 +86,7 @@ end
 get_order(scheme::CommutatorFreeScheme) = scheme.p
 number_of_exponentials(scheme::CommutatorFreeScheme) = size(scheme.A, 1)
 
+"""Exponential midpoint rule"""
 CF2 = CommutatorFreeScheme( ones(1,1), [1/2], 2 )
 
 CF4 = CommutatorFreeScheme(
