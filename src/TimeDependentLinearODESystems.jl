@@ -1189,6 +1189,29 @@ struct AdaptiveTimeStepper
     wsp  :: Array{Complex{Float64},1}  # workspace for expokit
     iwsp :: Array{Int32,1}    # workspace for expokit
 
+    """
+    Iterator that steps through ODE solver.
+    
+        dpsi/dt = A(t) * psi(t)
+    
+    The local error is defined as:
+    
+        error = || psi(t+dt) -  psi_est(t+dt) ||_2
+    
+    Required arguments:
+      - `H`:    Matrix for the ODE `A(t) = -i*H(t)`
+      - `psi`:  On input, `psi(t0)`, will be updated with `psi(t)`
+      - `t0`:   Initial time
+      - `tend`: Final time
+      - `dt`:   Guess for initial time step
+      - `tol`:  Tolerance for local error
+    
+    Optional arguments:
+      - `scheme`:             Integration scheme
+      - `symmetrized_defect`: (internal)
+      - `trapezoidal_rule`:   (internal)
+      - `expmv_tol`:          Tolerance for Lanczos (0: full exp)
+    """
     function AdaptiveTimeStepper(H::TimeDependentMatrix, 
                  psi::Array{Complex{Float64},1},
                  t0::Real, tend::Real, dt::Real,  tol::Real; 
