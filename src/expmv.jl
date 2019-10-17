@@ -1,7 +1,7 @@
 using LinearAlgebra
 
 """
-`expmv(t, A, v; [sig=1], [tol=1e-7], [m=min(30, size(A,1))])`
+`expmv(t, A, v; [tol=1e-7], [m=min(30, size(A,1))])`
  
 Computes the matrix exponential acting on some vector, 
    `w=exp(t*A)*v`
