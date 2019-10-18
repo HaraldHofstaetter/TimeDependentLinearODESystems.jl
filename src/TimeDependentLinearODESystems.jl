@@ -54,6 +54,15 @@ This is used to solve a ODE of the form  `i dv(t)/dt = H(t) v(t)`.
 """
 abstract type TimeDependentSchroedingerMatrix <: TimeDependentMatrix end
 
+
+import Base.*
+function *(A::TimeDependentMatrixState, B) 
+    Y = similar(B)
+    mul!(Y, A, B)
+    Y
+end
+
+
 include("expmv.jl")
 
 load_example(name::String) = include(string(dirname(@__FILE__),"/../examples/",name))
@@ -220,21 +229,19 @@ CF10 = CommutatorFreeScheme(
 
 
 
-norm0(H::T) where {T<:TimeDependentMatrixState} = norm(H, 1)
-
 
 function step!(psi::Union{Array{Float64,1},Array{Complex{Float64},1}}, 
                H::TimeDependentMatrix, 
                t::Real, dt::Real, scheme::CommutatorFreeScheme,
                wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1}; #TODO wsp also Array{Float64, 1} !?!?
-               expmv_tol::Real=1e-7)
+               expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     tt = t .+ dt*scheme.c
     for j=1:number_of_exponentials(scheme)
         H1 = H(tt, scheme.A[j,:])
         if expmv_tol==0
             psi[:] = exp(dt*full(H1))*psi
         else
-            expmv!(psi, dt, H1, psi, tol=expmv_to)
+            expmv!(psi, dt, H1, psi, tol=expmv_tol, m=expmv_m)
         end
     end
 end  
@@ -243,14 +250,14 @@ end
 function step!(psi::Array{Complex{Float64},1}, H::TimeDependentSchroedingerMatrix, 
                t::Real, dt::Real, scheme::CommutatorFreeScheme,
                wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
-               expmv_tol::Real=1e-7)
+               expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     tt = t .+ dt*scheme.c
     for j=1:number_of_exponentials(scheme)
         H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=false)
         if expmv_tol==0
             psi[:] = exp(-1im*dt*full(H1))*psi
         else
-            expmv!(psi, -1im*dt, H1, psi, tol=expmv_tol)
+            expmv!(psi, -1im*dt, H1, psi, tol=expmv_tol, m=expmv_m)
         end
     end
 end  
@@ -419,7 +426,7 @@ function step_estimated_CF2_trapezoidal_rule!(psi::Array{Complex{Float64},1}, ps
                  H::TimeDependentSchroedingerMatrix, 
                  t::Real, dt::Real,
                  wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
-                 expmv_tol::Real=1e-7)
+                 expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     n = size(H, 2)
     s = unsafe_wrap(Array, pointer(wsp, 1), n, own=false)
 
@@ -432,8 +439,8 @@ function step_estimated_CF2_trapezoidal_rule!(psi::Array{Complex{Float64},1}, ps
         psi[:] = exp(-1im*dt*full(H1))*psi
         psi_est[:] = exp(-1im*dt*full(H1))*psi_est
     else
-        expmv!(psi, -1im*dt, H1, psi, tol=expmv_tol)
-        expmv!(psi_est, -1im*dt, H1, psi_est, tol=expmv_tol)
+        expmv!(psi, -1im*dt, H1, psi, tol=expmv_tol, m=expmv_m)
+        expmv!(psi_est, -1im*dt, H1, psi_est, tol=expmv_tol, m=expmv_m)
     end
 
     H1 = H(t+0.5*dt, matrix_times_minus_i=true)
@@ -457,7 +464,7 @@ function step_estimated_CF2_symm_def!(psi::Array{Complex{Float64},1}, psi_est::A
                  H::TimeDependentSchroedingerMatrix, 
                  t::Real, dt::Real,
                  wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
-                 expmv_tol::Real=1e-7)
+                 expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
 
     n = size(H, 2)
     s = unsafe_wrap(Array, pointer(wsp, 1), n, own=false)
@@ -471,8 +478,8 @@ function step_estimated_CF2_symm_def!(psi::Array{Complex{Float64},1}, psi_est::A
         psi_est[:] = exp(-1im*dt*full(H1))*psi_est
         psi[:] = exp(-1im*dt*full(H1))*psi
     else
-        expmv!(psi, -1im*dt, H1, psi, tol=expmv_tol)
-        expmv!(psi_est, -1im*dt, H1, psi_est, tol=expmv_tol)
+        expmv!(psi, -1im*dt, H1, psi, tol=expmv_tol, m=expmv_m)
+        expmv!(psi_est, -1im*dt, H1, psi_est, tol=expmv_tol, m=expmv_m)
     end
     
     H1 = H(t+0.5*dt, matrix_times_minus_i=true)
@@ -488,6 +495,32 @@ function step_estimated_CF2_symm_def!(psi::Array{Complex{Float64},1}, psi_est::A
 end
 
 
+function step_estimated_adjoint_based!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
+                 H::TimeDependentSchroedingerMatrix, 
+                 t::Real, dt::Real,
+                 scheme::CommutatorFreeScheme,
+                 wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
+                 expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
+    tt1 = t .+ dt*scheme.c
+    tt2 = t .+ dt*(1.0 .- scheme.c)
+    psi_est[:] = psi[:]
+    J = number_of_exponentials(scheme)
+    for j=1:J
+        H1 = H(tt1, scheme.A[j,:], matrix_times_minus_i=false)
+        H2 = H(tt2, scheme.A[J+1-j,:], matrix_times_minus_i=false)
+        if expmv_tol==0
+            psi[:] = exp(-1im*dt*full(H1))*psi
+            psi_est[:] = exp(-1im*dt*full(H2))*psi_est
+        else
+            expmv!(psi, -1im*dt, H1, psi, tol=expmv_tol, m=expmv_m)
+            expmv!(psi_est, -1im*dt, H2, psi_est, tol=expmv_tol, m=expmv_m)
+        end
+    end
+    psi_est[:] -= psi[:]
+    psi_est[:] *= -0.5
+end
+
+
 function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
                  H::TimeDependentSchroedingerMatrix, 
                  t::Real, dt::Real,
@@ -496,12 +529,15 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
                  symmetrized_defect::Bool=false, 
                  trapezoidal_rule::Bool=false, 
                  modified_Gamma::Bool=false,
-                 expmv_tol::Real=1e-7)
+                 expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     if scheme==CF2 && symmetrized_defect
-        step_estimated_CF2_symm_def!(psi, psi_est, H, t, dt, wsp, iwsp, expmv_tol=expmv_tol)
+        step_estimated_CF2_symm_def!(psi, psi_est, H, t, dt, wsp, iwsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
         return
     elseif scheme==CF2 && trapezoidal_rule
-        step_estimated_CF2_trapezoidal_rule!(psi, psi_est, H, t, dt, wsp, iwsp, expmv_tol=expmv_tol)
+        step_estimated_CF2_trapezoidal_rule!(psi, psi_est, H, t, dt, wsp, iwsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
+        return
+    elseif isodd(get_order(scheme))
+        step_estimated_adjoint_based!(psi, psi_est, H, t, dt, scheme, wsp, iwsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
         return
     end
     n = size(H, 2)
@@ -542,9 +578,9 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
                 psi_est[:] = exp(-1im*dt*full(H1e))*psi_est
             end
         else
-            expmv!(psi, -1im*dt, H1e, psi, tol=expmv_tol)
+            expmv!(psi, -1im*dt, H1e, psi, tol=expmv_tol, m=expmv_m)
             if symmetrized_defect || trapezoidal_rule || j>1
-                expmv!(psi_est, -1im*dt, H1e, psi_est, tol=expmv_tol)
+                expmv!(psi_est, -1im*dt, H1e, psi_est, tol=expmv_tol, m=expmv_m)
             end
         end
     
@@ -578,7 +614,7 @@ function step_estimated!(psi::T,
                          symmetrized_defect::Bool=false, 
                          trapezoidal_rule::Bool=false, 
                          modified_Gamma::Bool=false,
-                         expmv_tol::Real=1e-7) where T<:Union{Array{Float64,1},Array{Complex{Float64},1}}
+                         expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1))) where T<:Union{Array{Float64,1},Array{Complex{Float64},1}}
     n = size(H, 2)
     s = unsafe_wrap(Array,  pointer(wsp, 1), n, own=false)
     s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, own=false)
@@ -597,7 +633,7 @@ function step_estimated!(psi::T,
         if expmv_tol==0
             psi_est[:] = exp(dt*full(H1))*psi_est
         else
-            expmv!(psi_est, dt, H1, psi_est, tol=expmv_tol)
+            expmv!(psi_est, dt, H1, psi_est, tol=expmv_tol, m=expmv_m)
         end
     else
         psi_est[:] .= 0.0
@@ -607,7 +643,7 @@ function step_estimated!(psi::T,
     if expmv_tol==0
         psi[:] = exp(dt*full(H1))*psi
     else
-        expmv!(psi, dt, H1, psi, tol=expmv_tol)
+        expmv!(psi, dt, H1, psi, tol=expmv_tol, m=expmv_m)
     end
 
     if symmetrized_defect
@@ -625,8 +661,8 @@ function step_estimated!(psi::T,
             psi_est[:] = exp(dt*full(H1))*psi_est
             psi[:] = exp(dt*full(H1))*psi
         else            
-            expmv!(psi, dt, H1, psi, tol=expmv_tol)
-            expmv!(psi_est, dt, H1, psi_est, tol=expmv_tol)
+            expmv!(psi, dt, H1, psi, tol=expmv_tol, m=expmv_m)
+            expmv!(psi_est, dt, H1, psi_est, tol=expmv_tol, m=expmv_m)
         end
 
         if symmetrized_defect
@@ -666,7 +702,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
                  symmetrized_defect::Bool=false,
                  trapezoidal_rule::Bool=false, 
                  modified_Gamma::Bool=false,
-                 expmv_tol::Real=1e-7)
+                 expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
       c = [0.0 1/5 3/10 4/5 8/9 1.0 1.0]
       A = [0.0         0.0        0.0         0.0      0.0          0.0     0.0
            1/5         0.0        0.0         0.0      0.0          0.0     0.0
@@ -804,7 +840,7 @@ end
 function step!(psi::Array{Complex{Float64},1}, H::TimeDependentSchroedingerMatrix, 
                t::Real, dt::Real, scheme::Type{Magnus4},
                wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
-               expmv_tol::Real=1e-7)
+               expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     sqrt3 = sqrt(3)
     c1 = 1/2-sqrt3/6
     c2 = 1/2+sqrt3/6
@@ -816,7 +852,7 @@ function step!(psi::Array{Complex{Float64},1}, H::TimeDependentSchroedingerMatri
     if expmv_tol==0
         psi[:] = exp(-1im*dt*full(HH))*psi
     else
-        expmv!(psi, -1im*dt, HH, psi, tol=expmv_tol)
+        expmv!(psi, -1im*dt, HH, psi, tol=expmv_tol, m=expmv_m)
     end
 end  
 
@@ -829,7 +865,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
                  symmetrized_defect::Bool=false, 
                  trapezoidal_rule::Bool=false, 
                  modified_Gamma::Bool=false,
-                 expmv_tol::Real=1e-7)
+                 expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     n = size(H, 2)
     s = unsafe_wrap(Array, pointer(wsp, 1), n, own=false)
     s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, own=false)
@@ -871,8 +907,8 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
             psi[:] = exp(-1im*dt*full(HHe))*psi
             psi_est[:] = exp(-1im*dt*full(HHe))*psi_est
         else
-            expmv!(psi, -1im*dt, HHe, psi, tol=expmv_tol)
-            expmv!(psi_est, -1im*dt, HHe, psi_est, tol=expmv_tol)
+            expmv!(psi, -1im*dt, HHe, psi, tol=expmv_tol, m=expmv_m)
+            expmv!(psi_est, -1im*dt, HHe, psi_est, tol=expmv_tol, m=expmv_m)
         end
         
         CC!(s, HH, HHd, psi, +1, dt, s1, s2)
@@ -883,14 +919,14 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
                 psi[:] = exp(-1im*dt*full(HHe))*psi
                 psi_est[:] = exp(-1im*dt*full(HHe))*psi_est
             else
-                expmv!(psi, -1im*dt, HHe, psi, tol=expmv_tol)
-                expmv!(psi_est, -1im*dt, HHe, psi_est, tol=expmv_tol)
+                expmv!(psi, -1im*dt, HHe, psi, tol=expmv_tol, m=expmv_m)
+                expmv!(psi_est, -1im*dt, HHe, psi_est, tol=expmv_tol, m=expmv_m)
             end
         else
             if expmv_tol==0
                 psi[:] = exp(-1im*dt*full(HHe))*psi
             else
-                expmv!(psi, -1im*dt, HHe, psi, tol=expmv_tol)
+                expmv!(psi, -1im*dt, HHe, psi, tol=expmv_tol, m=expmv_m)
             end
         end
     
@@ -917,19 +953,20 @@ struct EquidistantTimeStepper
     dt::Float64
     scheme
     expmv_tol::Float64
+    expmv_m::Int
     wsp  :: Array{Complex{Float64},1}  # workspace for expokit
     iwsp :: Array{Int32,1}    # workspace for expokit
     function EquidistantTimeStepper(H::TimeDependentMatrix, 
                  psi::Array{Complex{Float64},1},
                  t0::Real, tend::Real, dt::Real;
                  scheme=CF4,
-                 expmv_tol::Real=1e-7)
+                 expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
 
         # allocate workspace
         lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
         wsp = zeros(Complex{Float64}, lwsp)
         iwsp = zeros(Int32, liwsp) 
-        new(H, psi, t0, tend, dt, scheme, expmv_tol, wsp, iwsp)
+        new(H, psi, t0, tend, dt, scheme, expmv_tol, expmv_m, wsp, iwsp)
     end
 end
 
@@ -938,7 +975,7 @@ function Base.iterate(ets::EquidistantTimeStepper, t=ets.t0)
     if t >= ets.tend
         return nothing
     end
-    step!(ets.psi, ets.H, t, ets.dt, ets.scheme, ets.wsp, ets.iwsp, expmv_tol=ets.expmv_tol)
+    step!(ets.psi, ets.H, t, ets.dt, ets.scheme, ets.wsp, ets.iwsp, expmv_tol=ets.expmv_tol, expmv_m=ets.expmv.m)
     t1 = t + ets.dt < ets.tend ? t + ets.dt : ets.tend
     t1, t1
 end
@@ -954,6 +991,7 @@ struct EquidistantCorrectedTimeStepper
     symmetrized_defect::Bool
     trapezoidal_rule::Bool
     expmv_tol::Float64
+    expmv_m::Int
     psi_est::Array{Complex{Float64},1}
     wsp  :: Array{Complex{Float64},1}  # workspace for expokit
     iwsp :: Array{Int32,1}    # workspace for expokit
@@ -964,7 +1002,7 @@ struct EquidistantCorrectedTimeStepper
                  scheme=CF4,
                  symmetrized_defect::Bool=false,
                  trapezoidal_rule::Bool=false, 
-                 expmv_tol::Real=1e-7)
+                 expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
 
         # allocate workspace
         lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
@@ -974,7 +1012,7 @@ struct EquidistantCorrectedTimeStepper
         psi_est = zeros(Complex{Float64}, size(H, 2))
         
         new(H, psi, t0, tend, dt, scheme, 
-            symmetrized_defect, trapezoidal_rule, expmv_tol, 
+            symmetrized_defect, trapezoidal_rule, expmv_tol, expmv_m, 
             psi_est, wsp, iwsp)
     end
 end
@@ -987,7 +1025,7 @@ function Base.iterate(ets::EquidistantCorrectedTimeStepper, t=ets.t0)
     step_estimated!(ets.psi, ets.psi_est, ets.H, t, ets.dt, ets.scheme, ets.wsp, ets.iwsp,
                         symmetrized_defect=ets.symmetrized_defect,
                         trapezoidal_rule=ets.trapezoidal_rule,
-                        expmv_tol=ets.expmv_tol)
+                        expmv_tol=ets.expmv_tol, expmv_m=ets.expmv_m)
     ets.psi[:] -= ets.psi_est # corrected scheme                        
     t1 = t + ets.dt < ets.tend ? t + ets.dt : ets.tend
     t1, t1
@@ -1001,7 +1039,7 @@ function local_orders(H::TimeDependentMatrix,
                       scheme=CF2, reference_scheme=scheme, 
                       reference_steps=10,
                       rows=8,
-                      expmv_tol::Real=1e-7)
+                      expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     tab = zeros(Float64, rows, 3)
 
     # allocate workspace
@@ -1020,11 +1058,11 @@ function local_orders(H::TimeDependentMatrix,
     println("             dt         err      p")
     println("-----------------------------------")
     for row=1:rows
-        step!(psi, H, t0, dt1, scheme, wsp, iwsp, expmv_tol=expmv_tol)
+        step!(psi, H, t0, dt1, scheme, wsp, iwsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
         copyto!(psi_ref, wf_save_initial_value)
         dt1_ref = dt1/reference_steps
         for k=1:reference_steps
-            step!(psi_ref, H, t0+(k-1)*dt1_ref, dt1_ref, reference_scheme, wsp, iwsp, expmv_tol=expmv_tol)
+            step!(psi_ref, H, t0+(k-1)*dt1_ref, dt1_ref, reference_scheme, wsp, iwsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
         end    
         err = norm(psi-psi_ref)
         if (row==1) 
@@ -1055,7 +1093,7 @@ function local_orders_est(H::TimeDependentMatrix,
                       trapezoidal_rule::Bool=false,
                       modified_Gamma::Bool=false,
                       rows=8,
-                      expmv_tol::Real=1e-7)
+                      expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     tab = zeros(Float64, rows, 5)
 
     # allocate workspace
@@ -1081,11 +1119,11 @@ function local_orders_est(H::TimeDependentMatrix,
                         symmetrized_defect=symmetrized_defect,
                         trapezoidal_rule=trapezoidal_rule,
                         modified_Gamma=modified_Gamma,
-                        expmv_tol=expmv_tol)
+                        expmv_tol=expmv_tol, expmv_m=expmv_m)
         copyto!(psi_ref, wf_save_initial_value)
         dt1_ref = dt1/reference_steps
         for k=1:reference_steps
-            step!(psi_ref, H, t0+(k-1)*dt1_ref, dt1_ref, reference_scheme, wsp, iwsp, expmv_tol=expmv_tol)
+            step!(psi_ref, H, t0+(k-1)*dt1_ref, dt1_ref, reference_scheme, wsp, iwsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
         end    
         err = norm(psi-psi_ref)
         err_est = norm(psi-psi_ref-psi_est)
@@ -1123,7 +1161,7 @@ function global_orders(H::TimeDependentMatrix,
                       psi_ref::Array{Complex{Float64},1}, 
                       t0::Real, tend::Real, dt::Real; 
                       scheme=CF2, rows=8,
-                      expmv_tol::Real=1e-7,
+                      expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)),
                       corrected_scheme::Bool=false,
                       symmetrized_defect::Bool=false,
                       trapezoidal_rule::Bool=false)
@@ -1144,10 +1182,10 @@ function global_orders(H::TimeDependentMatrix,
         if corrected_scheme
             ets = EquidistantCorrectedTimeStepper(H, psi, t0, tend, dt1, 
                     scheme=scheme, symmetrized_defect=symmetrized_defect,
-                    trapezoidal_rule=trapezoidal_rule, expmv_tol=expmv_tol)
+                    trapezoidal_rule=trapezoidal_rule, expmv_tol=expmv_tol, expmv_m=expmv_m)
         else            
             ets = EquidistantTimeStepper(H, psi, t0, tend, dt1, 
-                    scheme=scheme, expmv_tol=expmv_tol)
+                    scheme=scheme, expmv_tol=expmv_tol, expmv_m=expmv_m)
         end
         for t in ets end
         err = norm(psi-psi_ref)
@@ -1184,6 +1222,7 @@ struct AdaptiveTimeStepper
     symmetrized_defect::Bool
     trapezoidal_rule::Bool
     expmv_tol::Float64
+    expmv_m::Int
     psi_est::Array{Complex{Float64},1}
     psi0::Array{Complex{Float64},1}
     wsp  :: Array{Complex{Float64},1}  # workspace for expokit
@@ -1218,7 +1257,7 @@ struct AdaptiveTimeStepper
                  scheme=CF4,
                  symmetrized_defect::Bool=false,
                  trapezoidal_rule::Bool=false, 
-                 expmv_tol::Real=1e-7)
+                 expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
         order = get_order(scheme)
 
         # allocate workspace
@@ -1230,7 +1269,7 @@ struct AdaptiveTimeStepper
         psi0 = zeros(Complex{Float64}, size(H, 2))
         
         new(H, psi, t0, tend, dt, tol, order, scheme, 
-            symmetrized_defect, trapezoidal_rule, expmv_tol, 
+            symmetrized_defect, trapezoidal_rule, expmv_tol, expmv_m, 
             psi_est, psi0, wsp, iwsp)
     end
     
@@ -1261,7 +1300,7 @@ function Base.iterate(ats::AdaptiveTimeStepper,
         step_estimated!(ats.psi, ats.psi_est, ats.H, state.t, dt, ats.scheme, ats.wsp, ats.iwsp,
                         symmetrized_defect=ats.symmetrized_defect,
                         trapezoidal_rule=ats.trapezoidal_rule,
-                        expmv_tol=ats.expmv_tol)
+                        expmv_tol=ats.expmv_tol, expmv_m=ats.expmv_m)
         err = norm(ats.psi_est)/ats.tol
         dt = dt*min(facmax, max(facmin, fac*(1.0/err)^(1.0/(ats.order+1))))
         if err>=1.0

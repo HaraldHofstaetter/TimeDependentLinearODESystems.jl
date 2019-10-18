@@ -33,8 +33,7 @@ mutable struct Hubbard <: TimeDependentSchroedingerMatrix
     f :: Function
     fd :: Function
 
-    norm0 :: Float64  # Inf-Norm of H for fac_diag = fac_offdiag = 1, needed by expokit
-
+    counter :: Int
 end
 
 
@@ -347,7 +346,7 @@ function Hubbard(N_s::Int, n_up::Int, n_down::Int,
     H =  Hubbard(N_s, n_up, n_down, N_up, N_down, N_psi, N_nz,
                            v_symm, v_anti, U, Float64[], spzeros(1,1), spzeros(1,1),
                            tab_up, tab_inv_up, tab_down, tab_inv_down,
-                           store_upper_part_only, f, fd, 0.0)
+                           store_upper_part_only, f, fd, 0)
     if nprocs()>1
         gen_H_diag_parallel(H)
         gen_H_upper_parallel(H)
@@ -359,7 +358,6 @@ function Hubbard(N_s::Int, n_up::Int, n_down::Int,
         H.H_upper_symm =  H.H_upper_symm + H.H_upper_symm'
         H.H_upper_anti =  H.H_upper_anti - H.H_upper_anti'
     end
-    H.norm0 = norm(H(0.0), Inf)
     H
 end
 
@@ -409,7 +407,7 @@ function LinearAlgebra.mul!(Y, H::HubbardState, B)
     if H.matrix_times_minus_i
         Y[:] *= -1im
     end
-
+    H.H.counter += 1
 end
 
 LinearAlgebra.size(H::Hubbard) = (H.N_psi, H.N_psi)
@@ -461,8 +459,6 @@ function LinearAlgebra.norm(H::HubbardState, p::Real=2)
     maximum(s)
 end
 
-"""For backwards compatibility with expokit"""
-norm0(H::HubbardState)  = H.H.norm0
 
 """Construct dense matrix for state"""
 function full(H::HubbardState)
