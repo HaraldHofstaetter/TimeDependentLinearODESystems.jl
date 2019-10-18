@@ -1,5 +1,7 @@
 load_example("hubbard.jl")
 
+export MagnusStrang
+
 function get_integrals_csr(t::Real, dt::Real, f::Function)
     # order 4:
     xyw=[(0.445948490915965, 0.445948490915965, 0.223381589678011),
@@ -108,11 +110,11 @@ struct BState <: TimeDependentSchroedingerMatrixState
 end
 
 function get_B(H::Hubbard, t::Real, dt::Real,
-               h1::Array{Complex128,1},
-               h2::Array{Complex128,1},
-               h3::Array{Complex128,1},
-               h4::Array{Complex128,1},
-               h5::Array{Complex128,1};
+               h1::Array{Complex{Float64},1},
+               h2::Array{Complex{Float64},1},
+               h3::Array{Complex{Float64},1},
+               h4::Array{Complex{Float64},1},
+               h5::Array{Complex{Float64},1};
                compute_derivative::Bool=false, matrix_times_minus_i::Bool=true,
                symmetrized_defect::Bool=false)
     if compute_derivative
@@ -124,15 +126,13 @@ function get_B(H::Hubbard, t::Real, dt::Real,
     BState(matrix_times_minus_i, H, c, s, r, h1, h2, h3, h4, h5)
 end
 
-import Base.LinAlg: A_mul_B!, issymmetric, ishermitian, checksquare
-import Base: eltype, size, norm, full
 
-size(B::BState) = size(B.H)
-size(B::BState, dim::Int) = size(B.H, dim) 
-eltype(B::BState) = eltype(B.H) 
-issymmetric(B::BState) = issymmetric(B.H) # TODO: check 
-ishermitian(B::BState) = ishermitian(B.H) # TODO: check 
-checksquare(B::BState) = checksquare(B.H)
+LinearAlgebra.size(B::BState) = size(B.H)
+LinearAlgebra.size(B::BState, dim::Int) = size(B.H, dim) 
+LinearAlgebra.eltype(B::BState) = Complex{Float64}
+LinearAlgebra.issymmetric(B::BState) = false
+LinearAlgebra.ishermitian(B::BState) = !B.matrix_times_minus_i 
+LinearAlgebra.checksquare(B::BState) = B.H.N_psi
 
 
 function full(B::BState) 
@@ -149,23 +149,23 @@ end
 
 
 
-function A_mul_B!(y, B::BState, u)
+function LinearAlgebra.mul!(y, B::BState, u)
     B.Hdu[:] = B.H.H_diag.*u
     B.Hsu[:] = B.H.H_upper_symm*u
     B.Hau[:] = B.H.H_upper_anti*u
-    if !B.H.store_full_matrices
-        B.Hsu[:] += At_mul_B(B.H.H_upper_symm, u)
-        B.Hau[:] -= At_mul_B(B.H.H_upper_anti, u)
+    if B.H.store_upper_part_only
+        B.Hsu[:] += B.H.H_upper_symm'*u
+        B.Hau[:] -= B.H.H_upper_anti'*u
     end
     B.v[:] = (-1im*B.c)*B.Hdu+B.r*B.Hau
     y[:] = B.H.H_upper_symm*B.v
-    if !B.H.store_full_matrices
-        y[:] += At_mul_B(B.H.H_upper_symm, B.v)
+    if B.H.store_upper_part_only
+        y[:] += B.H.H_upper_symm'*B.v
     end
     B.v[:] = B.s*B.Hdu-B.r*B.Hsu
     B.w[:] = B.H.H_upper_anti*B.v
-    if !B.H.store_full_matrices
-        B.w[:] -= At_mul_B(B.H.H_upper_anti, B.v)
+    if B.H.store_upper_part_only
+        B.w[:] -= B.H.H_upper_anti'*B.v
     end    
     y[:] += B.w
     B.v[:] = (-1im)*B.c*B.Hsu+B.s*B.Hau
@@ -179,10 +179,6 @@ end
 abstract type MagnusStrang end
 
 
-using FExpokit
-
-import FExpokit: get_lwsp_liwsp_expv
-
 function get_lwsp_liwsp_expv(H, scheme::Type{MagnusStrang}, m::Integer=30) 
     (lw, liw) = get_lwsp_liwsp_expv(size(H, 2), m)
     (lw+size(H, 2), liw)
@@ -195,7 +191,7 @@ number_of_exponentials(::Type{MagnusStrang}) = 3
 function TimeDependentLinearODESystems.step!(psi::Array{Complex{Float64},1}, H::Hubbard, 
                t::Real, dt::Real, scheme::Type{MagnusStrang},
                wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
-               use_expm::Bool=false)
+               expmv_tol::Real=1e-7)
     h1 = similar(psi) # TODO: take somthing from wsp
     h2 = similar(psi) # TODO: take somthing from wsp
     h3 = similar(psi) # TODO: take somthing from wsp
@@ -215,20 +211,15 @@ function TimeDependentLinearODESystems.step!(psi::Array{Complex{Float64},1}, H::
 
     A = H(tt, w, matrix_times_minus_i=false)
     B = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=false)
-    if use_expm
-        psi[:] = expm(-0.5im*dt*full(B))*psi
-        psi[:] = expm(-1im*dt*full(A))*psi
-        psi[:] = expm(-0.5im*dt*full(B))*psi
-        #psi[:] = expm(-1im*dt*(full(A)+full(B)))*psi
+    if expmv_tol==0
+        psi[:] = exp(-0.5im*dt*full(B))*psi
+        psi[:] = exp(-1im*dt*full(A))*psi
+        psi[:] = exp(-0.5im*dt*full(B))*psi
+        #psi[:] = exp(-1im*dt*(full(A)+full(B)))*psi
     else
-        nA = H.norm0
-        nB = 0.5*H.norm0*dt^2
-        expv!(psi, 0.5*dt, B, psi, anorm=nB, 
-             matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
-        expv!(psi, dt, A, psi, anorm=nA, 
-             matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
-        expv!(psi, 0.5*dt, B, psi, anorm=nB, 
-             matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+        expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol) 
+        expmv!(psi,   -1im*dt, A, psi, tol=expmv_tol)
+        expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol)
     end
 end  
 
@@ -241,7 +232,7 @@ function TimeDependentLinearODESystems.step_estimated!(psi::Array{Complex{Float6
                  symmetrized_defect::Bool=false, 
                  trapezoidal_rule::Bool=false, 
                  modified_Gamma::Bool=false,
-                 use_expm::Bool=false)
+                 expmv_tol::Real=1e-1)
     h = similar(psi) # TODO: take somthing from wsp
     h1 = similar(psi) # TODO: take somthing from wsp
     h2 = similar(psi) # TODO: take somthing from wsp
@@ -258,55 +249,49 @@ function TimeDependentLinearODESystems.step_estimated!(psi::Array{Complex{Float6
     #x = [1/2-sqrt(3/20), 1/2, 1/2+sqrt(3/20)] 
     #w = [5/18, 8/18, 5/18] 
 
-    tt = t+dt*x
+    tt = t .+ dt*x
 
     if symmetrized_defect
         H1 = H(t, matrix_times_minus_i=true)
-        A_mul_B!(psi_est, H1, psi)
+        mul!(psi_est, H1, psi)
         psi_est[:] *= -0.5
     else
-        psi_est[:] = 0.0
+        psi_est[:] .= 0.0
     end
 
     #1/2 B -----------------------
 
     B = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=false)
-    if use_expm
-        psi[:] =         expm(-0.5im*dt*full(B))*psi
+    if expmv_tol==0
+        psi[:] =         exp(-0.5im*dt*full(B))*psi
         if symmetrized_defect
-            psi_est[:] = expm(-0.5im*dt*full(B))*psi_est
+            psi_est[:] = exp(-0.5im*dt*full(B))*psi_est
         end
     else
-        nB = 0.5*H.norm0*dt^2
-        expv!(psi, 0.5*dt, B, psi, anorm=nB, 
-             matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+        expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol)
         if symmetrized_defect
-            expv!(psi_est, 0.5*dt, B, psi_est, anorm=nB, 
-                matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+            expmv!(psi_est, -0.5im*dt, B, psi_est, tol=expmv_tol)
         end
     end
     G = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=true,
               compute_derivative=true, symmetrized_defect=symmetrized_defect)
-    A_mul_B!(h, G, psi)
+    mul!(h, G, psi)
     psi_est[:] += 0.5*dt*h[:]
 
     #A -----------------------
 
     A = H(tt, w, matrix_times_minus_i=false)
-    if use_expm
-        psi[:]     = expm(-1im*dt*full(A))*psi
-        psi_est[:] = expm(-1im*dt*full(A))*psi_est
+    if expmv_tol==0
+        psi[:]     = exp(-1im*dt*full(A))*psi
+        psi_est[:] = exp(-1im*dt*full(A))*psi_est
     else
-        nA = H.norm0
-        expv!(psi, dt, A, psi, anorm=nA, 
-             matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
-        expv!(psi_est, dt, A, psi_est, anorm=nA, 
-             matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+        expmv!(psi, -1im*dt, A, psi, tol=expmv_tol)
+        expmv!(psi_est, -1im*dt, A, psi_est, tol=expmv_tol)
     end
 
     A = H(tt, w, matrix_times_minus_i=true)
     if symmetrized_defect
-        Ad = H(tt, w.*(x-0.5), compute_derivative=true, matrix_times_minus_i=true)
+        Ad = H(tt, w.*(x .- 0.5), compute_derivative=true, matrix_times_minus_i=true)
     else
         Ad = H(tt, w.*x, compute_derivative=true, matrix_times_minus_i=true)
     end
@@ -315,25 +300,22 @@ function TimeDependentLinearODESystems.step_estimated!(psi::Array{Complex{Float6
 
     #1/2 B -----------------------
 
-    if use_expm
-        psi[:] =     expm(-0.5im*dt*full(B))*psi
-        psi_est[:] = expm(-0.5im*dt*full(B))*psi_est
+    if expmv_tol==0
+        psi[:] =     exp(-0.5im*dt*full(B))*psi
+        psi_est[:] = exp(-0.5im*dt*full(B))*psi_est
     else
-        nB = 0.5*H.norm0*dt^2
-        expv!(psi, 0.5*dt, B, psi, anorm=nB, 
-             matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
-        expv!(psi_est, 0.5*dt, B, psi_est, anorm=nB, 
-             matrix_times_minus_i=true, hermitian=true, wsp=wsp, iwsp=iwsp)
+        expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol)
+        expmv!(psi_est, -0.5im*dt, B, psi_est, tol=expmv_tol)
     end
     G = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=true, 
               compute_derivative=true, symmetrized_defect=symmetrized_defect)
-    A_mul_B!(h, G, psi)
+    mul!(h, G, psi)
     psi_est[:] += 0.5*dt*h[:]
 
     #-----------------------------
 
     H1 = H(t+dt, matrix_times_minus_i=true)
-    A_mul_B!(h, H1, psi)
+    mul!(h, H1, psi)
     if symmetrized_defect
         h[:] *= 0.5
     end
