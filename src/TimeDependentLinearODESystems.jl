@@ -6,7 +6,7 @@ export expmv, expvmv!
 export TimeDependentMatrixState, TimeDependentSchroedingerMatrixState
 export TimeDependentMatrix, TimeDependentSchroedingerMatrix
 export CommutatorFree_Scheme
-export CF2, CF4, CF4o, CF6, CF6n, CF6ng8, CF7, CF8, CF8C, CF8AF,  CF10, DoPri45, Magnus4
+export CF2, CF4, CF4g6, CF4o, CF6, CF6n, CF6ng8, CF7, CF8, CF8C, CF8AF,  CF10, DoPri45, Magnus4
 export get_order, number_of_exponentials
 export load_example
 export EquidistantTimeStepper, local_orders, local_orders_est
@@ -99,6 +99,12 @@ CF4 = CommutatorFreeScheme(
     [1/4+sqrt(3)/6 1/4-sqrt(3)/6
      1/4-sqrt(3)/6 1/4+sqrt(3)/6],
     [1/2-sqrt(3)/6, 1/2+sqrt(3)/6],
+     4)
+
+CF4g6 = CommutatorFreeScheme(
+     [(2*sqrt(15)+5)/36   2/9  (-2*sqrt(15)+5)/36
+      (-2*sqrt(15)+5)/36  2/9  (2*sqrt(15)+5)/36],
+     [1/2-sqrt(15)/10, 1/2, 1/2+sqrt(15)/10],
      4)
 
 CF4o = CommutatorFreeScheme(
