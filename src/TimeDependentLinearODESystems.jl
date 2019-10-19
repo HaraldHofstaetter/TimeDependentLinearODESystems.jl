@@ -68,9 +68,6 @@ include("expmv.jl")
 load_example(name::String) = include(string(dirname(@__FILE__),"/../examples/",name))
 
 
-get_lwsp_liwsp_expv(n::Integer, m::Integer=30) = ( max(10, n*(m+1)+n+(m+2)^2+4*(m+2)^2+6+1), max(7, m+2) )
-get_lwsp_liwsp_expv(H, scheme, m::Integer=30) = get_lwsp_liwsp_expv(size(H, 2), m)
-
 """
 Parameters of integration scheme.
 
@@ -702,9 +699,7 @@ end
 
 abstract type DoPri45 end
 
-get_lwsp_liwsp_expv(H, scheme::Type{DoPri45}, m::Integer=30) = (8*size(H,2), 0)
 get_lwsp(H, scheme::Type{DoPri45}, m::Integer) = 8
-
 get_order(::Type{DoPri45}) = 4
 
 function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
@@ -756,15 +751,9 @@ end
 
 abstract type Magnus4 end
 
-function get_lwsp_liwsp_expv(H, scheme::Type{Magnus4}, m::Integer=30) 
-    (lw, liw) = get_lwsp_liwsp_expv(size(H, 2), m)
-    (lw+size(H, 2), liw)
-end
 get_lwsp(H, scheme::Type{Magnus4}, m::Integer) = min(m, size(H,2))+2 
-
 get_order(::Type{Magnus4}) = 4
 number_of_exponentials(::Type{Magnus4}) = 1
-
 
 struct Magnus4State <: TimeDependentMatrixState
     H1::TimeDependentMatrixState
@@ -980,8 +969,8 @@ struct EquidistantTimeStepper
                  expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
 
         # allocate workspace
-        lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
-        wsp = zeros(Complex{Float64}, lwsp)
+        lwsp = get_lwsp(H, scheme, expmv_m)
+        wsp = [similar(psi) for k=1:lwsp]
         new(H, psi, t0, tend, dt, scheme, expmv_tol, expmv_m, wsp)
     end
 end
@@ -1020,8 +1009,8 @@ struct EquidistantCorrectedTimeStepper
                  expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
 
         # allocate workspace
-        lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
-        wsp = zeros(Complex{Float64}, lwsp)
+        lwsp = max(5, get_lwsp(H, scheme, expmv_m))
+        wsp = [similar(psi) for k=1:lwsp]
 
         psi_est = zeros(Complex{Float64}, size(H, 2))
         
@@ -1057,10 +1046,10 @@ function local_orders(H::TimeDependentMatrix,
     tab = zeros(Float64, rows, 3)
 
     # allocate workspace
-    lwsp1, liwsp1 = get_lwsp_liwsp_expv(H, scheme)  
-    lwsp2, liwsp2 = get_lwsp_liwsp_expv(H, reference_scheme)  
+    lwsp1 = get_lwsp(H, scheme, expmv_m)
+    lwsp2 = get_lwsp(H, reference_scheme, expmv_m)
     lwsp = max(lwsp1, lwsp2)
-    wsp = zeros(Complex{Float64}, lwsp)
+    wsp = [similar(psi) for k=1:lwsp]
 
     wf_save_initial_value = copy(psi)
     psi_ref = copy(psi)
@@ -1109,10 +1098,10 @@ function local_orders_est(H::TimeDependentMatrix,
     tab = zeros(Float64, rows, 5)
 
     # allocate workspace
-    lwsp1, liwsp1 = get_lwsp_liwsp_expv(H, scheme)  
-    lwsp2, liwsp2 = get_lwsp_liwsp_expv(H, reference_scheme)  
-    lwsp = max(lwsp1, lwsp2)
-    wsp = zeros(Complex{Float64}, lwsp)
+    lwsp1 = get_lwsp(H, scheme, expmv_m)
+    lwsp2 = get_lwsp(H, reference_scheme, expmv_m)
+    lwsp = max(5, lwsp1, lwsp2)
+    wsp = [similar(psi) for k=1:lwsp]
 
     wf_save_initial_value = copy(psi)
     psi_ref = copy(psi)
@@ -1178,8 +1167,8 @@ function global_orders(H::TimeDependentMatrix,
     tab = zeros(Float64, rows, 3)
 
     # allocate workspace
-    lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
-    wsp = zeros(Complex{Float64}, lwsp)
+    lwsp = get_lwsp(H, scheme, expmv_m)
+    wsp = [similar(psi) for k=1:lwsp]
 
     wf_save_initial_value = copy(psi)
 
@@ -1269,7 +1258,6 @@ struct AdaptiveTimeStepper
         order = get_order(scheme)
 
         # allocate workspace
-        lwsp, liwsp = get_lwsp_liwsp_expv(H, scheme)  
         lwsp = max(5, get_lwsp(H, scheme, expmv_m))
         wsp = [similar(psi) for k=1:lwsp]
 
