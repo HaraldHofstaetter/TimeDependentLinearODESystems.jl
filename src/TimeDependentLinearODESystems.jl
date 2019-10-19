@@ -425,7 +425,6 @@ function step_estimated_CF2_trapezoidal_rule!(psi::Array{Complex{Float64},1}, ps
                  wsp::Vector{Vector{Complex{Float64}}}; 
                  expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     n = size(H, 2)
-    #s = unsafe_wrap(Array, pointer(wsp, 1), n, own=false)
     s = wsp[1]
 
     H1d = H(t+0.5*dt, matrix_times_minus_i=true, compute_derivative=true)
@@ -465,7 +464,6 @@ function step_estimated_CF2_symm_def!(psi::Array{Complex{Float64},1}, psi_est::A
                  expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
 
     n = size(H, 2)
-    #s = unsafe_wrap(Array, pointer(wsp, 1), n, own=false)
     s = wsp[1]
 
     H1 = H(t, matrix_times_minus_i=true)
@@ -540,11 +538,6 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         return
     end
     n = size(H, 2)
-    #s = unsafe_wrap(Array, pointer(wsp, 1), n, own=false)
-    #s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, own=false)
-    #s2 = unsafe_wrap(Array, pointer(wsp, 2*n+1), n, own=false)
-    #s1a = unsafe_wrap(Array, pointer(wsp, 3*n+1), n, own=false)
-    #s2a = unsafe_wrap(Array, pointer(wsp, 4*n+1), n, own=false)
     s = wsp[1]
     s1 = wsp[2]
     s2 = wsp[3]
@@ -620,11 +613,6 @@ function step_estimated!(psi::T,
                          modified_Gamma::Bool=false,
                          expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1))) where T<:Union{Array{Float64,1},Array{Complex{Float64},1}}
     n = size(H, 2)
-    #s = unsafe_wrap(Array,  pointer(wsp, 1), n, own=false)
-    #s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, own=false)
-    #s2 = unsafe_wrap(Array, pointer(wsp, 2*n+1), n, own=false)
-    #s1a = unsafe_wrap(Array, pointer(wsp, 3*n+1), n, own=false)
-    #s2a = unsafe_wrap(Array, pointer(wsp, 4*n+1), n, own=false)
     s = wsp[1]
     s1 = wsp[2]
     s2 = wsp[3]
@@ -722,7 +710,6 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
      # e = [51279/57600 0.0        7571/16695  393/640 -92097/339200 187/2100 1/40]
        e = [71/57600    0.0       -71/16695    71/1920  -17253/339200 22/525 -1/40]    
       n = size(H, 2)
-      #K = [unsafe_wrap(Array, pointer(wsp, (j-1)*n+1), n, own=false) for j=1:8]
       K = wsp 
       s = K[8]
       for l=1:7
@@ -751,7 +738,7 @@ end
 
 abstract type Magnus4 end
 
-get_lwsp(H, scheme::Type{Magnus4}, m::Integer) = min(m, size(H,2))+2 
+get_lwsp(H, scheme::Type{Magnus4}, m::Integer) = min(m, size(H,2))+4 
 get_order(::Type{Magnus4}) = 4
 number_of_exponentials(::Type{Magnus4}) = 1
 
@@ -849,7 +836,7 @@ function step!(psi::Array{Complex{Float64},1}, H::TimeDependentSchroedingerMatri
     H1 = H(t + c1*dt, matrix_times_minus_i=false)
     H2 = H(t + c2*dt, matrix_times_minus_i=false)
     f = sqrt3/12
-    s = similar(psi) # TODO: take somthing from wsp
+    s = wsp[expmv_m+3]
     HH = Magnus4State(H1, H2, -1im*f*dt, s)
     if expmv_tol==0
         psi[:] = exp(-1im*dt*full(HH))*psi
@@ -869,11 +856,6 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
                  modified_Gamma::Bool=false,
                  expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     n = size(H, 2)
-    #s = unsafe_wrap(Array, pointer(wsp, 1), n, own=false)
-    #s1 = unsafe_wrap(Array, pointer(wsp, n+1),   n, own=false)
-    #s2 = unsafe_wrap(Array, pointer(wsp, 2*n+1), n, own=false)
-    #s1a = unsafe_wrap(Array, pointer(wsp, 3*n+1), n, own=false)
-    #s2a = unsafe_wrap(Array, pointer(wsp, 4*n+1), n, own=false)
     s = wsp[1]
     s1 = wsp[2]
     s2 = wsp[3]
@@ -884,8 +866,8 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     f = sqrt3/12
     c1 = 1/2-sqrt3/6
     c2 = 1/2+sqrt3/6
-    s3 = similar(psi) # TODO: take somthing from wsp
-    s4 = similar(psi) # TODO: take somthing from wsp
+    s3 = wsp[expmv_m+3]
+    s4 = wsp[expmv_m+4]
 
     H1e = H(t + c1*dt, matrix_times_minus_i=false)
     H2e = H(t + c2*dt, matrix_times_minus_i=false)
