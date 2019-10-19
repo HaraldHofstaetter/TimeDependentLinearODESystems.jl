@@ -73,9 +73,10 @@ expmv!(t::Number, A, v::Vector{NT};
         tol::Real=1e-7, 
         m::Int=min(30, size(A,1))) where {NT<:Number} = expmv!(v, t, A, v; tol=tol, m=m)
 
-function expmv!(w::Union{Vector{NT}, Vector{Complex{NT}}}, t::Number, A, v::Vector{NT}; 
-                 tol::Real=1e-7, 
-                 m::Int=min(30, size(A,1))) where NT<:Number 
+function expmv!(w::Vector{NT}, t::Number, A, v::Vector{NT}; 
+                tol::Real=1e-7, 
+                m::Int=min(30, size(A,1)),
+                wsp::Vector{Vector{NT}}=Vector{NT}[]) where NT<:Number 
     if size(v,1) != size(A,2)
         error("dimension mismatch")
     end
@@ -93,12 +94,17 @@ function expmv!(w::Union{Vector{NT}, Vector{Complex{NT}}}, t::Number, A, v::Vect
         error("complex output array expected")
     end
     copyto!(w, v)
-
-    z = similar(w)
+    
     # storage for Krylov subspace vectors
     V = Array{typeof(w)}(undef,m+1)
-    for k=1:m+1
-        V[k] = similar(w)
+    if length(wsp)==0
+        z = similar(w)
+        for k=1:m+1
+            V[k] = similar(w)
+        end
+    else
+        z = wsp[m+2] 
+        V = wsp
     end
     T = SymTridiagonal(zeros(real(NT), m+1), zeros(real(NT), m))
 

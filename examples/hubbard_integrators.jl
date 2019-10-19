@@ -179,24 +179,20 @@ end
 abstract type MagnusStrang end
 
 
-function get_lwsp_liwsp_expv(H, scheme::Type{MagnusStrang}, m::Integer=30) 
-    (lw, liw) = get_lwsp_liwsp_expv(size(H, 2), m)
-    (lw+size(H, 2), liw)
-end
-
+get_lwsp(H, scheme::Type{MagnusStrang}, m) = m+8
 get_order(::Type{MagnusStrang}) = 4
 number_of_exponentials(::Type{MagnusStrang}) = 3
 
 
 function TimeDependentLinearODESystems.step!(psi::Array{Complex{Float64},1}, H::Hubbard, 
                t::Real, dt::Real, scheme::Type{MagnusStrang},
-               wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
-               expmv_tol::Real=1e-7)
-    h1 = similar(psi) # TODO: take somthing from wsp
-    h2 = similar(psi) # TODO: take somthing from wsp
-    h3 = similar(psi) # TODO: take somthing from wsp
-    h4 = similar(psi) # TODO: take somthing from wsp
-    h5 = similar(psi) # TODO: take somthing from wsp
+               wsp::Vector{Vector{Complex{Float64}}};
+               expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
+    h1 = wsp[expmv_m+3]
+    h2 = wsp[expmv_m+4]
+    h3 = wsp[expmv_m+5]
+    h4 = wsp[expmv_m+6]
+    h5 = wsp[expmv_m+7]
     #order 2
     #x = [1/2]
     #w = [1.0]
@@ -217,9 +213,9 @@ function TimeDependentLinearODESystems.step!(psi::Array{Complex{Float64},1}, H::
         psi[:] = exp(-0.5im*dt*full(B))*psi
         #psi[:] = exp(-1im*dt*(full(A)+full(B)))*psi
     else
-        expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol) 
-        expmv!(psi,   -1im*dt, A, psi, tol=expmv_tol)
-        expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol)
+        expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol, m=expmv_m, wsp=wsp) 
+        expmv!(psi,   -1im*dt, A, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
+        expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
     end
 end  
 
@@ -228,17 +224,17 @@ function TimeDependentLinearODESystems.step_estimated!(psi::Array{Complex{Float6
                  H::Hubbard, 
                  t::Real, dt::Real,
                  scheme::Type{MagnusStrang},
-                 wsp::Array{Complex{Float64},1}, iwsp::Array{Int32,1};
+                 wsp::Vector{Vector{Complex{Float64}}};
                  symmetrized_defect::Bool=false, 
                  trapezoidal_rule::Bool=false, 
                  modified_Gamma::Bool=false,
-                 expmv_tol::Real=1e-1)
-    h = similar(psi) # TODO: take somthing from wsp
-    h1 = similar(psi) # TODO: take somthing from wsp
-    h2 = similar(psi) # TODO: take somthing from wsp
-    h3 = similar(psi) # TODO: take somthing from wsp
-    h4 = similar(psi) # TODO: take somthing from wsp
-    h5 = similar(psi) # TODO: take somthing from wsp
+                 expmv_tol::Real=1e-1, expmv_m::Int=min(30, size(H,1)))
+    h = wsp[expmv_m+8]
+    h1 = wsp[expmv_m+3]
+    h2 = wsp[expmv_m+4]
+    h3 = wsp[expmv_m+5]
+    h4 = wsp[expmv_m+6]
+    h5 = wsp[expmv_m+7]
     #order 2
     #x = [1/2]
     #w = [1.0]
@@ -268,9 +264,9 @@ function TimeDependentLinearODESystems.step_estimated!(psi::Array{Complex{Float6
             psi_est[:] = exp(-0.5im*dt*full(B))*psi_est
         end
     else
-        expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol)
+        expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
         if symmetrized_defect
-            expmv!(psi_est, -0.5im*dt, B, psi_est, tol=expmv_tol)
+            expmv!(psi_est, -0.5im*dt, B, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
         end
     end
     G = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=true,
@@ -285,8 +281,8 @@ function TimeDependentLinearODESystems.step_estimated!(psi::Array{Complex{Float6
         psi[:]     = exp(-1im*dt*full(A))*psi
         psi_est[:] = exp(-1im*dt*full(A))*psi_est
     else
-        expmv!(psi, -1im*dt, A, psi, tol=expmv_tol)
-        expmv!(psi_est, -1im*dt, A, psi_est, tol=expmv_tol)
+        expmv!(psi, -1im*dt, A, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
+        expmv!(psi_est, -1im*dt, A, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
     end
 
     A = H(tt, w, matrix_times_minus_i=true)
@@ -304,8 +300,8 @@ function TimeDependentLinearODESystems.step_estimated!(psi::Array{Complex{Float6
         psi[:] =     exp(-0.5im*dt*full(B))*psi
         psi_est[:] = exp(-0.5im*dt*full(B))*psi_est
     else
-        expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol)
-        expmv!(psi_est, -0.5im*dt, B, psi_est, tol=expmv_tol)
+        expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
+        expmv!(psi_est, -0.5im*dt, B, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
     end
     G = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=true, 
               compute_derivative=true, symmetrized_defect=symmetrized_defect)
