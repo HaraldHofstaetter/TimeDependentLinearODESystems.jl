@@ -1,24 +1,24 @@
 load_example("hubbard.jl")
 
-export MagnusStrang
+export MagnusStrang4
 
 function get_integrals_csr(t::Real, dt::Real, f::Function)
     # order 4:
-    xyw=[(0.445948490915965, 0.445948490915965, 0.223381589678011),
-         (0.445948490915965, 0.108103018168070, 0.223381589678011),
-         (0.108103018168070, 0.445948490915965, 0.223381589678011),
-         (0.091576213509771, 0.091576213509771, 0.109951743655322),
-         (0.091576213509771, 0.816847572980459, 0.109951743655322),
-         (0.816847572980459, 0.091576213509771, 0.109951743655322)]
-    
+    #xyw=[(0.445948490915965, 0.445948490915965, 0.223381589678011),
+    #     (0.445948490915965, 0.108103018168070, 0.223381589678011),
+    #     (0.108103018168070, 0.445948490915965, 0.223381589678011),
+    #     (0.091576213509771, 0.091576213509771, 0.109951743655322),
+    #     (0.091576213509771, 0.816847572980459, 0.109951743655322),
+    #     (0.816847572980459, 0.091576213509771, 0.109951743655322)]
+    #  
     # order 6:
-    #xyw=[(0.333333333333333, 0.333333333333333, 0.225000000000000),
-    #     (0.470142064105115, 0.470142064105115, 0.132394152788506),
-    #     (0.470142064105115, 0.059715871789770, 0.132394152788506),
-    #     (0.059715871789770, 0.470142064105115, 0.132394152788506),
-    #     (0.101286507323456, 0.101286507323456, 0.125939180544827),
-    #     (0.101286507323456, 0.797426985353087, 0.125939180544827),
-    #     (0.797426985353087, 0.101286507323456, 0.125939180544827)]; 
+    xyw=[(0.333333333333333, 0.333333333333333, 0.225000000000000),
+         (0.470142064105115, 0.470142064105115, 0.132394152788506),
+         (0.470142064105115, 0.059715871789770, 0.132394152788506),
+         (0.059715871789770, 0.470142064105115, 0.132394152788506),
+         (0.101286507323456, 0.101286507323456, 0.125939180544827),
+         (0.101286507323456, 0.797426985353087, 0.125939180544827),
+         (0.797426985353087, 0.101286507323456, 0.125939180544827)]; 
     c = 0.0
     s = 0.0
     r = 0.0
@@ -42,21 +42,21 @@ end
 
 function get_integrals_csr_d(t::Real, dt::Real, f::Function, fd::Function; symmetrized_defect::Bool=false)
     # order 4:
-    xyw=[(0.445948490915965, 0.445948490915965, 0.223381589678011),
-         (0.445948490915965, 0.108103018168070, 0.223381589678011),
-         (0.108103018168070, 0.445948490915965, 0.223381589678011),
-         (0.091576213509771, 0.091576213509771, 0.109951743655322),
-         (0.091576213509771, 0.816847572980459, 0.109951743655322),
-         (0.816847572980459, 0.091576213509771, 0.109951743655322)]
+    #xyw=[(0.445948490915965, 0.445948490915965, 0.223381589678011),
+    #     (0.445948490915965, 0.108103018168070, 0.223381589678011),
+    #     (0.108103018168070, 0.445948490915965, 0.223381589678011),
+    #     (0.091576213509771, 0.091576213509771, 0.109951743655322),
+    #     (0.091576213509771, 0.816847572980459, 0.109951743655322),
+    #     (0.816847572980459, 0.091576213509771, 0.109951743655322)]
     
     # order 6:
-    #xyw=[(0.333333333333333, 0.333333333333333, 0.225000000000000),
-    #     (0.470142064105115, 0.470142064105115, 0.132394152788506),
-    #     (0.470142064105115, 0.059715871789770, 0.132394152788506),
-    #     (0.059715871789770, 0.470142064105115, 0.132394152788506),
-    #     (0.101286507323456, 0.101286507323456, 0.125939180544827),
-    #     (0.101286507323456, 0.797426985353087, 0.125939180544827),
-    #     (0.797426985353087, 0.101286507323456, 0.125939180544827)]; 
+    xyw=[(0.333333333333333, 0.333333333333333, 0.225000000000000),
+         (0.470142064105115, 0.470142064105115, 0.132394152788506),
+         (0.470142064105115, 0.059715871789770, 0.132394152788506),
+         (0.059715871789770, 0.470142064105115, 0.132394152788506),
+         (0.101286507323456, 0.101286507323456, 0.125939180544827),
+         (0.101286507323456, 0.797426985353087, 0.125939180544827),
+         (0.797426985353087, 0.101286507323456, 0.125939180544827)]; 
     c = 0.0
     s = 0.0
     r = 0.0
@@ -176,16 +176,33 @@ function LinearAlgebra.mul!(y, B::BState, u)
     end
 end
 
-abstract type MagnusStrang end
+mutable struct MagnusStrang <: Scheme 
+    p::Int
+    symmetrized_defect::Bool
+    function MagnusStrang(
+            p::Int;
+            symmetrized_defect::Bool=false,
+            )
+        new(p,
+        symmetrized_defect)
+    end
+end
 
+function (M::MagnusStrang)(;
+    symmetrized_defect::Bool=M.symmetrized_defect)
+    M.symmetrized_defect=symmetrized_defect
+    M
+end
 
-get_lwsp(H, scheme::Type{MagnusStrang}, m) = m+8
-get_order(::Type{MagnusStrang}) = 4
-number_of_exponentials(::Type{MagnusStrang}) = 3
+MagnusStrang4 = MagnusStrang(4)
+
+get_lwsp(H, scheme::MagnusStrang, m) = m+8
+get_order(scheme::MagnusStrang) = scheme.p
+number_of_exponentials(::MagnusStrang) = 3
 
 
 function TimeDependentLinearODESystems.step!(psi::Array{Complex{Float64},1}, H::Hubbard, 
-               t::Real, dt::Real, scheme::Type{MagnusStrang},
+               t::Real, dt::Real, scheme::MagnusStrang,
                wsp::Vector{Vector{Complex{Float64}}};
                expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     h1 = wsp[expmv_m+3]
@@ -197,11 +214,11 @@ function TimeDependentLinearODESystems.step!(psi::Array{Complex{Float64},1}, H::
     #x = [1/2]
     #w = [1.0]
     #order 4
-    x = [1/2-sqrt(1/12), 1/2+sqrt(1/12)]
-    w = [1/2, 1/2]
+    #x = [1/2-sqrt(1/12), 1/2+sqrt(1/12)]
+    #w = [1/2, 1/2]
     #order 6
-    #x = [1/2-sqrt(3/20), 1/2, 1/2+sqrt(3/20)] 
-    #w = [5/18, 8/18, 5/18] 
+    x = [1/2-sqrt(3/20), 1/2, 1/2+sqrt(3/20)] 
+    w = [5/18, 8/18, 5/18] 
 
     tt = t+dt*x
 
@@ -223,11 +240,8 @@ end
 function TimeDependentLinearODESystems.step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
                  H::Hubbard, 
                  t::Real, dt::Real,
-                 scheme::Type{MagnusStrang},
+                 scheme::MagnusStrang,
                  wsp::Vector{Vector{Complex{Float64}}};
-                 symmetrized_defect::Bool=false, 
-                 trapezoidal_rule::Bool=false, 
-                 modified_Gamma::Bool=false,
                  expmv_tol::Real=1e-1, expmv_m::Int=min(30, size(H,1)))
     h = wsp[expmv_m+8]
     h1 = wsp[expmv_m+3]
@@ -239,15 +253,15 @@ function TimeDependentLinearODESystems.step_estimated!(psi::Array{Complex{Float6
     #x = [1/2]
     #w = [1.0]
     #order 4
-    x = [1/2-sqrt(1/12), 1/2+sqrt(1/12)]
-    w = [1/2, 1/2]
+    #x = [1/2-sqrt(1/12), 1/2+sqrt(1/12)]
+    #w = [1/2, 1/2]
     #order 6
-    #x = [1/2-sqrt(3/20), 1/2, 1/2+sqrt(3/20)] 
-    #w = [5/18, 8/18, 5/18] 
+    x = [1/2-sqrt(3/20), 1/2, 1/2+sqrt(3/20)] 
+    w = [5/18, 8/18, 5/18] 
 
     tt = t .+ dt*x
 
-    if symmetrized_defect
+    if scheme.symmetrized_defect
         H1 = H(t, matrix_times_minus_i=true)
         mul!(psi_est, H1, psi)
         psi_est[:] *= -0.5
@@ -260,17 +274,17 @@ function TimeDependentLinearODESystems.step_estimated!(psi::Array{Complex{Float6
     B = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=false)
     if expmv_tol==0
         psi[:] =         exp(-0.5im*dt*full(B))*psi
-        if symmetrized_defect
+        if scheme.symmetrized_defect
             psi_est[:] = exp(-0.5im*dt*full(B))*psi_est
         end
     else
         expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-        if symmetrized_defect
+        if scheme.symmetrized_defect
             expmv!(psi_est, -0.5im*dt, B, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
         end
     end
     G = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=true,
-              compute_derivative=true, symmetrized_defect=symmetrized_defect)
+              compute_derivative=true, symmetrized_defect=scheme.symmetrized_defect)
     mul!(h, G, psi)
     psi_est[:] += 0.5*dt*h[:]
 
@@ -286,7 +300,7 @@ function TimeDependentLinearODESystems.step_estimated!(psi::Array{Complex{Float6
     end
 
     A = H(tt, w, matrix_times_minus_i=true)
-    if symmetrized_defect
+    if scheme.symmetrized_defect
         Ad = H(tt, w.*(x .- 0.5), compute_derivative=true, matrix_times_minus_i=true)
     else
         Ad = H(tt, w.*x, compute_derivative=true, matrix_times_minus_i=true)
@@ -304,7 +318,7 @@ function TimeDependentLinearODESystems.step_estimated!(psi::Array{Complex{Float6
         expmv!(psi_est, -0.5im*dt, B, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
     end
     G = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=true, 
-              compute_derivative=true, symmetrized_defect=symmetrized_defect)
+              compute_derivative=true, symmetrized_defect=scheme.symmetrized_defect)
     mul!(h, G, psi)
     psi_est[:] += 0.5*dt*h[:]
 
@@ -312,7 +326,7 @@ function TimeDependentLinearODESystems.step_estimated!(psi::Array{Complex{Float6
 
     H1 = H(t+dt, matrix_times_minus_i=true)
     mul!(h, H1, psi)
-    if symmetrized_defect
+    if scheme.symmetrized_defect
         h[:] *= 0.5
     end
     psi_est[:] -= h[:]

@@ -5,7 +5,6 @@ using LinearAlgebra
 export expmv, expvmv!
 export TimeDependentMatrixState, TimeDependentSchroedingerMatrixState
 export TimeDependentMatrix, TimeDependentSchroedingerMatrix
-export CommutatorFree_Scheme
 export CF2, CF4, CF4g6, CF4o, CF6, CF6n, CF6ng8, CF7, CF8, CF8C, CF8AF,  CF10, DoPri45, Magnus4
 export get_order, number_of_exponentials
 export load_example
@@ -67,6 +66,8 @@ include("expmv.jl")
 
 load_example(name::String) = include(string(dirname(@__FILE__),"/../examples/",name))
 
+abstract type Scheme end
+
 
 """
 Parameters of integration scheme.
@@ -82,10 +83,41 @@ the linear combination for evaluating H.
 
 `p` is the order of the scheme.
 """
-struct CommutatorFreeScheme
+mutable struct CommutatorFreeScheme <:Scheme
     A::Array{Float64,2}
     c::Array{Float64,1}
     p::Int
+    symmetrized_defect::Bool
+    trapezoidal_rule::Bool
+    modified_Gamma::Bool
+    adjoint_based::Bool
+    function CommutatorFreeScheme(
+            A::Array{Float64,2},
+            c::Array{Float64,1},
+            p::Int;
+            symmetrized_defect::Bool=false,
+            trapezoidal_rule::Bool=false,
+            modified_Gamma::Bool=false,
+            adjoint_based::Bool=false,
+            )
+        new(A,c,p,
+        symmetrized_defect,
+        trapezoidal_rule,
+        modified_Gamma,
+        adjoint_based)
+    end
+end
+
+function (CF::CommutatorFreeScheme)(;
+    symmetrized_defect::Bool=CF.symmetrized_defect,
+    trapezoidal_rule::Bool=CF.trapezoidal_rule,
+    modified_Gamma::Bool=CF.modified_Gamma,
+    adjoint_based::Bool=CF.adjoint_based)
+    CF.symmetrized_defect=symmetrized_defect
+    CF.trapezoidal_rule=trapezoidal_rule
+    CF.modified_Gamma=modified_Gamma
+    CF.adjoint_based= adjoint_based
+    CF
 end
 
 get_order(scheme::CommutatorFreeScheme) = scheme.p
@@ -529,17 +561,20 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
                  t::Real, dt::Real,
                  scheme::CommutatorFreeScheme,
                  wsp::Vector{Vector{Complex{Float64}}}; 
-                 symmetrized_defect::Bool=false, 
-                 trapezoidal_rule::Bool=false, 
-                 modified_Gamma::Bool=false,
                  expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
-    if scheme==CF2 && symmetrized_defect
-        step_estimated_CF2_symm_def!(psi, psi_est, H, t, dt, wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
-        return
-    elseif scheme==CF2 && trapezoidal_rule
-        step_estimated_CF2_trapezoidal_rule!(psi, psi_est, H, t, dt, wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
-        return
-    elseif isodd(get_order(scheme))
+    if scheme.c == [0.5] #midpoint rule
+        if scheme.symmetrized_defect  
+            step_estimated_CF2_symm_def!(psi, psi_est, H, t, dt, wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
+            return
+        elseif scheme.trapezoidal_rule 
+           step_estimated_CF2_trapezoidal_rule!(psi, psi_est, H, t, dt, wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
+           return
+       end
+    end
+    if scheme.adjoint_based
+        if !isodd(get_order(scheme))
+            error("For adjoint_based=true order of scheme has to be odd")
+        end
         step_estimated_adjoint_based!(psi, psi_est, H, t, dt, scheme, wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
         return
     end
@@ -552,7 +587,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
 
     tt = t .+ dt*scheme.c
 
-    if symmetrized_defect
+    if scheme.symmetrized_defect
         H1 = H(t, matrix_times_minus_i=true)
         mul!(psi_est, H1, psi)
         psi_est[:] *= -0.5
@@ -564,12 +599,12 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
 
     for j=1:J
         H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=true)
-        if symmetrized_defect
+        if scheme.symmetrized_defect
             H1d = H(tt, (scheme.c .- 0.5).*scheme.A[j,:], compute_derivative=true, matrix_times_minus_i=true)
         else
             H1d = H(tt, scheme.c.*scheme.A[j,:], compute_derivative=true, matrix_times_minus_i=true)
         end
-        if trapezoidal_rule 
+        if scheme.trapezoidal_rule 
             CC!(s, H1, H1d, psi, -1, dt, s1, s2)
             psi_est[:] += s[:]
         end
@@ -577,27 +612,27 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         H1e = H(tt, scheme.A[j,:], matrix_times_minus_i=false)
         if expmv_tol==0
             psi[:] = exp(-1im*dt*full(H1e))*psi
-            if symmetrized_defect || trapezoidal_rule || j>1
+            if scheme.symmetrized_defect || scheme.trapezoidal_rule || j>1
                 psi_est[:] = exp(-1im*dt*full(H1e))*psi_est
             end
         else
             expmv!(psi, -1im*dt, H1e, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-            if symmetrized_defect || trapezoidal_rule || j>1
+            if scheme.symmetrized_defect || scheme.trapezoidal_rule || j>1
                 expmv!(psi_est, -1im*dt, H1e, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
             end
         end
     
-        if trapezoidal_rule
+        if scheme.trapezoidal_rule
             CC!(s, H1, H1d, psi, +1, dt, s1, s2)
         else
-            Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a, modified_Gamma=modified_Gamma)
+            Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a, modified_Gamma=scheme.modified_Gamma)
         end
         psi_est[:] += s[:]
     end
    
     H1 = H(t+dt, matrix_times_minus_i=true)
     mul!(s, H1, psi)
-    if symmetrized_defect
+    if scheme.symmetrized_defect
         s[:] *= 0.5
     end
     psi_est[:] -= s[:]
@@ -614,9 +649,6 @@ function step_estimated!(psi::T,
                          t::Real, dt::Real,
                          scheme::CommutatorFreeScheme, 
                          wsp::Union{Vector{Vector{Float64}},Vector{Vector{Complex{Float64}}}}; 
-                         symmetrized_defect::Bool=false, 
-                         trapezoidal_rule::Bool=false, 
-                         modified_Gamma::Bool=false,
                          expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1))) where T<:Union{Array{Float64,1},Array{Complex{Float64},1}}
     n = size(H, 2)
     s = wsp[1]
@@ -627,7 +659,7 @@ function step_estimated!(psi::T,
 
     tt = t+dt*scheme.c
 
-    if symmetrized_defect
+    if scheme.symmetrized_defect
         H1 = H(t)
         mul!(psi_est, H1, psi)
         psi_est[:] *= -0.5
@@ -649,7 +681,7 @@ function step_estimated!(psi::T,
         expmv!(psi, dt, H1, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
     end
 
-    if symmetrized_defect
+    if scheme.symmetrized_defect
         H1d = H(tt, (scheme.c-0.5).*scheme.A[1,:], compute_derivative=true)
     else
         H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true)
@@ -668,12 +700,12 @@ function step_estimated!(psi::T,
             expmv!(psi_est, dt, H1, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
         end
 
-        if symmetrized_defect
+        if scheme.symmetrized_defect
             H1d = H(tt, (scheme.c-0.5).*scheme.A[j,:], compute_derivative=true)
         else
             H1d = H(tt, scheme.c.*scheme.A[j,:], compute_derivative=true)
         end
-        Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a, modified_Gamma=modified_Gamma)
+        Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a, modified_Gamma=scheme.modified_Gamma)
 
         psi_est[:] += s[:]
 
@@ -691,48 +723,64 @@ function step_estimated!(psi::T,
 end
 
 
-abstract type DoPri45 end
+mutable struct EmbeddedRungeKuttaScheme <:Scheme
+    A::Array{Float64,2}
+    c::Array{Float64,1}
+    e::Array{Float64,1}
+    p::Int
+    function EmbeddedRungeKuttaScheme(
+            A::Array{Float64,2},
+            c::Array{Float64,1},
+            e::Array{Float64,1},
+            p::Int
+            )
+        new(A,c,e,p)
+    end
+end
 
-get_lwsp(H, scheme::Type{DoPri45}, m::Integer) = 8
-get_order(::Type{DoPri45}) = 4
-
-function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
-                 H::TimeDependentMatrix, 
-                 t::Real, dt::Real,
-                 scheme::Type{DoPri45},
-                 wsp::Vector{Vector{Complex{Float64}}}; 
-                 symmetrized_defect::Bool=false,
-                 trapezoidal_rule::Bool=false, 
-                 modified_Gamma::Bool=false,
-                 expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
-      c = [0.0 1/5 3/10 4/5 8/9 1.0 1.0]
-      A = [0.0         0.0        0.0         0.0      0.0          0.0     0.0
+DoPri45 = EmbeddedRungeKuttaScheme(
+          [0.0         0.0        0.0         0.0      0.0          0.0     0.0
            1/5         0.0        0.0         0.0      0.0          0.0     0.0
            3/40        9/40       0.0         0.0      0.0          0.0     0.0
            44/45      -56/15      32/9        0.0      0.0          0.0     0.0
            19372/6561 -25360/2187 64448/6561 -212/729  0.0          0.0     0.0
            9017/3168  -355/33     46732/5247  49/176  -5103/18656   0.0     0.0
-           35/384      0.0        500/1113    125/192 -2187/6784    11/84   0.0]
-     # e = [51279/57600 0.0        7571/16695  393/640 -92097/339200 187/2100 1/40]
-       e = [71/57600    0.0       -71/16695    71/1920  -17253/339200 22/525 -1/40]    
-      n = size(H, 2)
+           35/384      0.0        500/1113    125/192 -2187/6784    11/84   0.0],
+          [0.0, 1/5, 3/10, 4/5, 8/9, 1.0, 1.0],
+     #    [51279/57600, 0.0,        7571/16695,  393/640, -92097/339200, 187/2100, 1/40],
+          [71/57600,    0.0,       -71/16695,    71/1920,  -17253/339200, 22/525, -1/40],    
+          4
+        )
+
+#TODO: consider case b!=A[end,:]
+
+get_lwsp(H, scheme::EmbeddedRungeKuttaScheme, m::Integer) = length(scheme.c)+1
+get_order(scheme::EmbeddedRungeKuttaScheme) = scheme.p
+
+function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
+                 H::TimeDependentMatrix, 
+                 t::Real, dt::Real,
+                 scheme::EmbeddedRungeKuttaScheme,
+                 wsp::Vector{Vector{Complex{Float64}}}; 
+                 expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
+      nstages = length(scheme.c)
       K = wsp 
-      s = K[8]
-      for l=1:7
+      s = K[nstages+1]
+      for l=1:nstages
           s[:] = psi
           for j=1:l-1
-              if A[l,j]!=0.0
-                  s[:] += (dt*A[l,j])*K[j][:]
+              if scheme.A[l,j]!=0.0
+                  s[:] += (dt*scheme.A[l,j])*K[j][:]
               end
           end
-          H1 = H(t+c[l]*dt)
+          H1 = H(t+scheme.c[l]*dt)
           mul!(K[l], H1, s)
       end
       psi[:] = s[:]
       s[:] .= 0.0
-      for j=1:7
-          if e[j]!=0.0
-              s[:] += (dt*e[j])*K[j][:]
+      for j=1:nstages
+          if scheme.e[j]!=0.0
+              s[:] += (dt*scheme.e[j])*K[j][:]
           end
       end
       H1 = H(t+dt)
@@ -742,11 +790,40 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
 end
 
 
-abstract type Magnus4 end
+mutable struct MagnusScheme <: Scheme 
+    p::Int
+    symmetrized_defect::Bool
+    trapezoidal_rule::Bool
+    modified_Gamma::Bool
+    function MagnusScheme(
+            p::Int;
+            symmetrized_defect::Bool=false,
+            trapezoidal_rule::Bool=false,
+            modified_Gamma::Bool=false,
+            )
+        new(p,
+        symmetrized_defect,
+        trapezoidal_rule,
+        modified_Gamma)
+    end
+end
 
-get_lwsp(H, scheme::Type{Magnus4}, m::Integer) = min(m, size(H,2))+4 
-get_order(::Type{Magnus4}) = 4
-number_of_exponentials(::Type{Magnus4}) = 1
+function (M::MagnusScheme)(;
+    symmetrized_defect::Bool=M.symmetrized_defect,
+    trapezoidal_rule::Bool=M.trapezoidal_rule,
+    modified_Gamma::Bool=M.modified_Gamma)
+    M.symmetrized_defect=symmetrized_defect
+    M.trapezoidal_rule=trapezoidal_rule
+    M.modified_Gamma=modified_Gamma
+    M
+end
+
+Magnus4 = MagnusScheme(4)
+
+
+get_lwsp(H, scheme::MagnusScheme, m::Integer) = min(m, size(H,2))+4 
+get_order(M::MagnusScheme) = M.p 
+number_of_exponentials(::MagnusScheme) = 1
 
 struct Magnus4State <: TimeDependentMatrixState
     H1::TimeDependentMatrixState
@@ -833,7 +910,7 @@ end
 
 
 function step!(psi::Array{Complex{Float64},1}, H::TimeDependentSchroedingerMatrix, 
-               t::Real, dt::Real, scheme::Type{Magnus4},
+               t::Real, dt::Real, scheme::MagnusScheme,
                wsp::Vector{Vector{Complex{Float64}}}; 
                expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     sqrt3 = sqrt(3)
@@ -855,13 +932,9 @@ end
 function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
                  H::TimeDependentSchroedingerMatrix, 
                  t::Real, dt::Real,
-                 scheme::Type{Magnus4},
+                 scheme::MagnusScheme,
                  wsp::Vector{Vector{Complex{Float64}}}; 
-                 symmetrized_defect::Bool=false, 
-                 trapezoidal_rule::Bool=false, 
-                 modified_Gamma::Bool=false,
                  expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
-    n = size(H, 2)
     s = wsp[1]
     s1 = wsp[2]
     s2 = wsp[3]
@@ -884,7 +957,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     H1d = H(t + c1*dt, matrix_times_minus_i=true, compute_derivative=true)
     H2d = H(t + c2*dt, matrix_times_minus_i=true, compute_derivative=true)
     HH = Magnus4State(H1, H2, f*dt, s3)
-    if symmetrized_defect
+    if scheme.symmetrized_defect
         HHd = Magnus4DerivativeState(H1, H2, H1d, H2d, dt, f, c1-1/2, c2-1/2, s3, s4)
         H1 = H(t, matrix_times_minus_i=true)
         mul!(psi_est, H1, psi)
@@ -894,7 +967,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         psi_est[:] .= 0.0
     end
 
-    if trapezoidal_rule
+    if scheme.trapezoidal_rule
         CC!(s, HH, HHd, psi, -1, dt, s1, s2)
         psi_est[:] += s[:]
 
@@ -909,7 +982,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         CC!(s, HH, HHd, psi, +1, dt, s1, s2)
         psi_est[:] += s[:]
     else
-        if symmetrized_defect
+        if scheme.symmetrized_defect
             if expmv_tol==0
                 psi[:] = exp(-1im*dt*full(HHe))*psi
                 psi_est[:] = exp(-1im*dt*full(HHe))*psi_est
@@ -925,13 +998,13 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
             end
         end
     
-        Gamma!(s, HH, HHd, psi, 4, dt, s1, s2, s1a, s2a, modified_Gamma=modified_Gamma)
+        Gamma!(s, HH, HHd, psi, 4, dt, s1, s2, s1a, s2a, modified_Gamma=scheme.modified_Gamma)
         psi_est[:] += s[:]
     end
 
     H1 = H(t + dt, matrix_times_minus_i=true)
     mul!(s, H1, psi)
-    if symmetrized_defect
+    if scheme.symmetrized_defect
         s[:] *= 0.5
     end
     psi_est[:] -= s[:]
@@ -946,14 +1019,14 @@ struct EquidistantTimeStepper
     t0::Float64
     tend::Float64
     dt::Float64
-    scheme
+    scheme::Scheme
     expmv_tol::Float64
     expmv_m::Int
     wsp  :: Vector{Vector{Complex{Float64}}}  # workspace
     function EquidistantTimeStepper(H::TimeDependentMatrix, 
                  psi::Array{Complex{Float64},1},
                  t0::Real, tend::Real, dt::Real;
-                 scheme=CF4,
+                 scheme::Scheme=CF4,
                  expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
 
         # allocate workspace
@@ -980,9 +1053,7 @@ struct EquidistantCorrectedTimeStepper
     t0::Float64
     tend::Float64
     dt::Float64
-    scheme
-    symmetrized_defect::Bool
-    trapezoidal_rule::Bool
+    scheme::Scheme
     expmv_tol::Float64
     expmv_m::Int
     psi_est::Array{Complex{Float64},1}
@@ -991,9 +1062,7 @@ struct EquidistantCorrectedTimeStepper
     function EquidistantCorrectedTimeStepper(H::TimeDependentMatrix, 
                  psi::Array{Complex{Float64},1},
                  t0::Real, tend::Real, dt::Real; 
-                 scheme=CF4,
-                 symmetrized_defect::Bool=false,
-                 trapezoidal_rule::Bool=false, 
+                 scheme::Scheme=CF4,
                  expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
 
         # allocate workspace
@@ -1003,7 +1072,7 @@ struct EquidistantCorrectedTimeStepper
         psi_est = zeros(Complex{Float64}, size(H, 2))
         
         new(H, psi, t0, tend, dt, scheme, 
-            symmetrized_defect, trapezoidal_rule, expmv_tol, expmv_m, 
+            expmv_tol, expmv_m, 
             psi_est, wsp)
     end
 end
@@ -1014,8 +1083,6 @@ function Base.iterate(ets::EquidistantCorrectedTimeStepper, t=ets.t0)
         return nothing
     end
     step_estimated!(ets.psi, ets.psi_est, ets.H, t, ets.dt, ets.scheme, ets.wsp,
-                        symmetrized_defect=ets.symmetrized_defect,
-                        trapezoidal_rule=ets.trapezoidal_rule,
                         expmv_tol=ets.expmv_tol, expmv_m=ets.expmv_m)
     ets.psi[:] -= ets.psi_est # corrected scheme                        
     t1 = t + ets.dt < ets.tend ? t + ets.dt : ets.tend
@@ -1027,7 +1094,7 @@ using Printf
 
 function local_orders(H::TimeDependentMatrix,
                       psi::Array{Complex{Float64},1}, t0::Real, dt::Real; 
-                      scheme=CF2, reference_scheme=scheme, 
+                      scheme::Scheme=CF2, reference_scheme=scheme, 
                       reference_steps=10,
                       rows=8,
                       expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
@@ -1076,11 +1143,8 @@ end
 
 function local_orders_est(H::TimeDependentMatrix,
                       psi::Array{Complex{Float64},1}, t0::Real, dt::Real; 
-                      scheme=CF2_defectbased, reference_scheme=CF4, 
+                      scheme::Scheme=CF2_defectbased, reference_scheme=CF4, 
                       reference_steps=10,
-                      symmetrized_defect::Bool=false,
-                      trapezoidal_rule::Bool=false,
-                      modified_Gamma::Bool=false,
                       rows=8,
                       expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     tab = zeros(Float64, rows, 5)
@@ -1102,11 +1166,7 @@ function local_orders_est(H::TimeDependentMatrix,
     println("--------------------------------------------------------")
     for row=1:rows
         step_estimated!(psi, psi_est, H, t0, dt1, scheme,
-                        wsp, 
-                        symmetrized_defect=symmetrized_defect,
-                        trapezoidal_rule=trapezoidal_rule,
-                        modified_Gamma=modified_Gamma,
-                        expmv_tol=expmv_tol, expmv_m=expmv_m)
+                        wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
         copyto!(psi_ref, wf_save_initial_value)
         dt1_ref = dt1/reference_steps
         for k=1:reference_steps
@@ -1147,11 +1207,9 @@ function global_orders(H::TimeDependentMatrix,
                       psi::Array{Complex{Float64},1}, 
                       psi_ref::Array{Complex{Float64},1}, 
                       t0::Real, tend::Real, dt::Real; 
-                      scheme=CF2, rows=8,
+                      scheme::Scheme=CF2, rows=8,
                       expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)),
-                      corrected_scheme::Bool=false,
-                      symmetrized_defect::Bool=false,
-                      trapezoidal_rule::Bool=false)
+                      corrected_scheme::Bool=false)
     tab = zeros(Float64, rows, 3)
 
     # allocate workspace
@@ -1167,8 +1225,7 @@ function global_orders(H::TimeDependentMatrix,
     for row=1:rows
         if corrected_scheme
             ets = EquidistantCorrectedTimeStepper(H, psi, t0, tend, dt1, 
-                    scheme=scheme, symmetrized_defect=symmetrized_defect,
-                    trapezoidal_rule=trapezoidal_rule, expmv_tol=expmv_tol, expmv_m=expmv_m)
+                    scheme=scheme, expmv_tol=expmv_tol, expmv_m=expmv_m)
         else            
             ets = EquidistantTimeStepper(H, psi, t0, tend, dt1, 
                     scheme=scheme, expmv_tol=expmv_tol, expmv_m=expmv_m)
@@ -1204,9 +1261,7 @@ struct AdaptiveTimeStepper
     dt::Float64
     tol::Float64
     order::Int
-    scheme
-    symmetrized_defect::Bool
-    trapezoidal_rule::Bool
+    scheme::Scheme
     expmv_tol::Float64
     expmv_m::Int
     psi_est::Array{Complex{Float64},1}
@@ -1232,16 +1287,12 @@ struct AdaptiveTimeStepper
     
     Optional arguments:
       - `scheme`:             Integration scheme
-      - `symmetrized_defect`: (internal)
-      - `trapezoidal_rule`:   (internal)
       - `expmv_tol`:          Tolerance for Lanczos (0: full exp)
     """
     function AdaptiveTimeStepper(H::TimeDependentMatrix, 
                  psi::Array{Complex{Float64},1},
                  t0::Real, tend::Real, dt::Real,  tol::Real; 
-                 scheme=CF4,
-                 symmetrized_defect::Bool=false,
-                 trapezoidal_rule::Bool=false, 
+                 scheme::Scheme=CF4,
                  expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
         order = get_order(scheme)
 
@@ -1253,7 +1304,7 @@ struct AdaptiveTimeStepper
         psi0 = zeros(Complex{Float64}, size(H, 2))
         
         new(H, psi, t0, tend, dt, tol, order, scheme, 
-            symmetrized_defect, trapezoidal_rule, expmv_tol, expmv_m, 
+            expmv_tol, expmv_m, 
             psi_est, psi0, wsp)
     end
     
@@ -1282,8 +1333,6 @@ function Base.iterate(ats::AdaptiveTimeStepper,
         dt = min(dt, ats.tend-state.t)
         dt0 = dt
         step_estimated!(ats.psi, ats.psi_est, ats.H, state.t, dt, ats.scheme, ats.wsp,
-                        symmetrized_defect=ats.symmetrized_defect,
-                        trapezoidal_rule=ats.trapezoidal_rule,
                         expmv_tol=ats.expmv_tol, expmv_m=ats.expmv_m)
         err = norm(ats.psi_est)/ats.tol
         dt = dt*min(facmax, max(facmin, fac*(1.0/err)^(1.0/(ats.order+1))))
