@@ -97,7 +97,6 @@ end
 
 
 struct BState <: TimeDependentSchroedingerMatrixState
-    matrix_times_minus_i :: Bool
     H::Hubbard
     c::Float64
     s::Float64
@@ -115,7 +114,7 @@ function get_B(H::Hubbard, t::Real, dt::Real,
                h3::Array{Complex{Float64},1},
                h4::Array{Complex{Float64},1},
                h5::Array{Complex{Float64},1};
-               compute_derivative::Bool=false, matrix_times_minus_i::Bool=true,
+               compute_derivative::Bool=false,
                symmetrized_defect::Bool=false)
     if compute_derivative
         c, s, r = get_integrals_csr_d(t, dt, H.f, H.fd, symmetrized_defect=symmetrized_defect)
@@ -123,7 +122,7 @@ function get_B(H::Hubbard, t::Real, dt::Real,
         c, s, r = get_integrals_csr(t, dt, H.f)
     end
     
-    BState(matrix_times_minus_i, H, c, s, r, h1, h2, h3, h4, h5)
+    BState(H, c, s, r, h1, h2, h3, h4, h5)
 end
 
 
@@ -131,20 +130,14 @@ LinearAlgebra.size(B::BState) = size(B.H)
 LinearAlgebra.size(B::BState, dim::Int) = size(B.H, dim) 
 LinearAlgebra.eltype(B::BState) = Complex{Float64}
 LinearAlgebra.issymmetric(B::BState) = false
-LinearAlgebra.ishermitian(B::BState) = !B.matrix_times_minus_i 
+LinearAlgebra.ishermitian(B::BState) = true
 LinearAlgebra.checksquare(B::BState) = B.H.N_psi
 
 
 function full(B::BState) 
-    if B.matrix_times_minus_i
-        return full(-(B.H.H_upper_symm*diagm(B.H.H_diag)-diagm(B.H.H_diag)*B.H.H_upper_symm)+
-                    (-1im*B.s)*(B.H.H_upper_anti*diagm(B.H.H_diag)-diagm(B.H.H_diag)*B.H.H_upper_anti)+
-                    (-1im*B.r)*(B.H.H_upper_symm*B.H.H_upper_anti-B.H.H_upper_anti*B.H.H_upper_symm))
-    else
-        return full((-1im*B.c)*(B.H.H_upper_symm*diagm(B.H.H_diag)-diagm(B.H.H_diag)*B.H.H_upper_symm)+
+        full((-1im*B.c)*(B.H.H_upper_symm*diagm(B.H.H_diag)-diagm(B.H.H_diag)*B.H.H_upper_symm)+
         B.s*(B.H.H_upper_anti*diagm(B.H.H_diag)-diagm(B.H.H_diag)*B.H.H_upper_anti)+
         B.r*(B.H.H_upper_symm*B.H.H_upper_anti-B.H.H_upper_anti*B.H.H_upper_symm))
-    end
 end
 
 
@@ -171,9 +164,6 @@ function LinearAlgebra.mul!(y, B::BState, u)
     B.v[:] = (-1im)*B.c*B.Hsu+B.s*B.Hau
     B.w[:] = B.H.H_diag.*B.v
     y[:] -= B.w
-    if B.matrix_times_minus_i
-        y[:] *= -1im
-    end
 end
 
 mutable struct MagnusStrang <: Scheme 
@@ -222,18 +212,11 @@ function TimeDependentLinearODESystems.step!(psi::Array{Complex{Float64},1}, H::
 
     tt = t+dt*x
 
-    A = H(tt, w, matrix_times_minus_i=false)
-    B = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=false)
-    if expmv_tol==0
-        psi[:] = exp(-0.5im*dt*full(B))*psi
-        psi[:] = exp(-1im*dt*full(A))*psi
-        psi[:] = exp(-0.5im*dt*full(B))*psi
-        #psi[:] = exp(-1im*dt*(full(A)+full(B)))*psi
-    else
-        expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol, m=expmv_m, wsp=wsp) 
-        expmv!(psi,   -1im*dt, A, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-        expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-    end
+    A = H(tt, w)
+    B = get_B(H, t, dt, h1, h2, h3, h4, h5)
+    expmv1!(psi, 0.5*dt, B, psi, expmv_tol, expmv_m, wsp) 
+    expmv1!(psi,     dt, A, psi, expmv_tol, expmv_m, wsp)
+    expmv1!(psi, 0.5*dt, B, psi, expmv_tol, expmv_m, wsp)
 end  
 
 
@@ -262,8 +245,8 @@ function TimeDependentLinearODESystems.step_estimated!(psi::Array{Complex{Float6
     tt = t .+ dt*x
 
     if scheme.symmetrized_defect
-        H1 = H(t, matrix_times_minus_i=true)
-        mul!(psi_est, H1, psi)
+        H1 = H(t)
+        mul1!(psi_est, H1, psi)
         psi_est[:] *= -0.5
     else
         psi_est[:] .= 0.0
@@ -271,61 +254,44 @@ function TimeDependentLinearODESystems.step_estimated!(psi::Array{Complex{Float6
 
     #1/2 B -----------------------
 
-    B = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=false)
-    if expmv_tol==0
-        psi[:] =         exp(-0.5im*dt*full(B))*psi
-        if scheme.symmetrized_defect
-            psi_est[:] = exp(-0.5im*dt*full(B))*psi_est
-        end
-    else
-        expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-        if scheme.symmetrized_defect
-            expmv!(psi_est, -0.5im*dt, B, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
-        end
+    B = get_B(H, t, dt, h1, h2, h3, h4, h5)
+    expmv1!(psi, 0.5*dt, B, psi, expmv_tol, expmv_m, wsp)
+    if scheme.symmetrized_defect
+        expmv1!(psi_est, 0.5*dt, B, psi_est, expmv_tol, expmv_m, wsp)
     end
-    G = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=true,
+    G = get_B(H, t, dt, h1, h2, h3, h4, h5,
               compute_derivative=true, symmetrized_defect=scheme.symmetrized_defect)
-    mul!(h, G, psi)
+    mul1!(h, G, psi) 
     psi_est[:] += 0.5*dt*h[:]
 
     #A -----------------------
 
-    A = H(tt, w, matrix_times_minus_i=false)
-    if expmv_tol==0
-        psi[:]     = exp(-1im*dt*full(A))*psi
-        psi_est[:] = exp(-1im*dt*full(A))*psi_est
-    else
-        expmv!(psi, -1im*dt, A, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-        expmv!(psi_est, -1im*dt, A, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
-    end
+    A = H(tt, w)
+    expmv1!(psi, dt, A, psi, expmv_tol, expmv_m, wsp)
+    expmv1!(psi_est, dt, A, psi_est, expmv_tol, expmv_m, wsp)
 
-    A = H(tt, w, matrix_times_minus_i=true)
+    A = H(tt, w)
     if scheme.symmetrized_defect
-        Ad = H(tt, w.*(x .- 0.5), compute_derivative=true, matrix_times_minus_i=true)
+        Ad = H(tt, w.*(x .- 0.5), compute_derivative=true)
     else
-        Ad = H(tt, w.*x, compute_derivative=true, matrix_times_minus_i=true)
+        Ad = H(tt, w.*x, compute_derivative=true)
     end
     Gamma!(h, A, Ad, psi, 4, dt, h1, h2, h3, h4) 
     psi_est[:] += h[:]
 
     #1/2 B -----------------------
 
-    if expmv_tol==0
-        psi[:] =     exp(-0.5im*dt*full(B))*psi
-        psi_est[:] = exp(-0.5im*dt*full(B))*psi_est
-    else
-        expmv!(psi, -0.5im*dt, B, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-        expmv!(psi_est, -0.5im*dt, B, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
-    end
-    G = get_B(H, t, dt, h1, h2, h3, h4, h5, matrix_times_minus_i=true, 
+    expmv1!(psi, 0.5*dt, B, psi, expmv_tol, expmv_m, wsp)
+    expmv1!(psi_est, 0.5*dt, B, psi_est, expmv_tol, expmv_m, wsp)
+    G = get_B(H, t, dt, h1, h2, h3, h4, h5, 
               compute_derivative=true, symmetrized_defect=scheme.symmetrized_defect)
-    mul!(h, G, psi)
+    mul1!(h, G, psi)
     psi_est[:] += 0.5*dt*h[:]
 
     #-----------------------------
 
-    H1 = H(t+dt, matrix_times_minus_i=true)
-    mul!(h, H1, psi)
+    H1 = H(t+dt)
+    mul1!(h, H1, psi)
     if scheme.symmetrized_defect
         h[:] *= 0.5
     end

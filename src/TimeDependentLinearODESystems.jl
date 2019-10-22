@@ -303,6 +303,9 @@ function Gamma!(r::Vector{Complex{Float64}},
                 s1::Vector{Complex{Float64}}, s2::Vector{Complex{Float64}},
                 s1a::Vector{Complex{Float64}}, s2a::Vector{Complex{Float64}};
                 modified_Gamma::Bool=false)
+    if p>6
+        error("p<=6 expected")
+    end
     f1 = dt
     f2 = dt^2/2
     f3 = dt^3/6
