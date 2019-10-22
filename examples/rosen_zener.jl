@@ -12,6 +12,7 @@ mutable struct RosenZener <: TimeDependentSchroedingerMatrix
     H2::SparseMatrixCSC{Complex{Float64},Int64}
     norm_H1::Float64
     norm_H2::Float64
+    counter :: Int
 
     function RosenZener(V0::Real, omega::Real, T0::Real, d::Int)
         k = div(d,2)
@@ -25,7 +26,7 @@ mutable struct RosenZener <: TimeDependentSchroedingerMatrix
         norm_H1 = opnorm(H1, 1)
         norm_H2 = opnorm(H2, 1)
 
-        new(V0, omega, T0, d, H1, H2, norm_H1, norm_H2)
+        new(V0, omega, T0, d, H1, H2, norm_H1, norm_H2, 0)
     end
 end
 
@@ -75,6 +76,7 @@ end
 
 function LinearAlgebra.mul!(Y, H::RosenZenerState, B)
     Y[:] = H.c1*(H.H.H1*B) + H.c2*(H.H.H2*B)
+    H.H.counter += 1
 end
 
 

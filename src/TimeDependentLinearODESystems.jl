@@ -981,7 +981,7 @@ function local_orders(H::TimeDependentMatrix,
                       reference_steps=10,
                       rows=8,
                       expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
-    tab = zeros(Float64, rows, 3)
+    tab = zeros(Float64, rows, 4)
 
     # allocate workspace
     lwsp1 = get_lwsp(H, scheme, expmv_m)
@@ -994,27 +994,32 @@ function local_orders(H::TimeDependentMatrix,
 
     dt1 = dt
     err_old = 0.0
-    println("             dt         err      p")
-    println("-----------------------------------")
+    println("             dt         err      p    muls/dt")
+    println("----------------------------------------------")
     for row=1:rows
+        C0 = H.counter
         step!(psi, H, t0, dt1, scheme, wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
+        C1 = H.counter
         copyto!(psi_ref, wf_save_initial_value)
         dt1_ref = dt1/reference_steps
         for k=1:reference_steps
             step!(psi_ref, H, t0+(k-1)*dt1_ref, dt1_ref, reference_scheme, wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
         end    
         err = norm(psi-psi_ref)
+        muls_per_dt = (C1-C0)/dt1
         if (row==1) 
-            @printf("%3i%12.3e%12.3e\n", row, Float64(dt1), Float64(err))
+            @printf("%3i%12.3e%12.3e         %9.2f\n", row, Float64(dt1), Float64(err), Float64(muls_per_dt))
             tab[row,1] = dt1
             tab[row,2] = err
             tab[row,3] = 0 
+            tab[row,4] = muls_per_dt 
         else
             p = log(err_old/err)/log(2.0);
-            @printf("%3i%12.3e%12.3e%7.2f\n", row, Float64(dt1), Float64(err), Float64(p))
+            @printf("%3i%12.3e%12.3e%7.2f  %9.2f\n", row, Float64(dt1), Float64(err), Float64(p), Float64(muls_per_dt))
             tab[row,1] = dt1
             tab[row,2] = err
             tab[row,3] = p 
+            tab[row,4] = muls_per_dt 
         end
         err_old = err
         dt1 = 0.5*dt1
@@ -1030,7 +1035,7 @@ function local_orders_est(H::TimeDependentMatrix,
                       reference_steps=10,
                       rows=8,
                       expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
-    tab = zeros(Float64, rows, 5)
+    tab = zeros(Float64, rows, 6)
 
     # allocate workspace
     lwsp1 = get_lwsp(H, scheme, expmv_m)
@@ -1045,11 +1050,13 @@ function local_orders_est(H::TimeDependentMatrix,
     dt1 = dt
     err_old = 0.0
     err_est_old = 0.0
-    println("             dt         err      p       err_est      p")
-    println("--------------------------------------------------------")
+    println("             dt         err      p       err_est      p    muls/dt")
+    println("-------------------------------------------------------------------")
     for row=1:rows
+        C0 = H.counter
         step_estimated!(psi, psi_est, H, t0, dt1, scheme,
                         wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
+        C1 = H.counter
         copyto!(psi_ref, wf_save_initial_value)
         dt1_ref = dt1/reference_steps
         for k=1:reference_steps
@@ -1057,24 +1064,28 @@ function local_orders_est(H::TimeDependentMatrix,
         end    
         err = norm(psi-psi_ref)
         err_est = norm(psi-psi_ref-psi_est)
+        muls_per_dt = (C1-C0)/dt1
         if (row==1) 
-            @printf("%3i%12.3e%12.3e  %19.3e\n", row, Float64(dt1), Float64(err), Float64(err_est))
+            @printf("%3i%12.3e%12.3e  %19.3e         %9.2f\n", 
+                    row, Float64(dt1), Float64(err), Float64(err_est), Float64(muls_per_dt))
             tab[row,1] = dt1
             tab[row,2] = err
             tab[row,3] = 0 
             tab[row,4] = err_est
             tab[row,5] = 0 
+            tab[row,6] = muls_per_dt 
         else
             p = log(err_old/err)/log(2.0);
             p_est = log(err_est_old/err_est)/log(2.0);
-            @printf("%3i%12.3e%12.3e%7.2f  %12.3e%7.2f\n", 
+            @printf("%3i%12.3e%12.3e%7.2f  %12.3e%7.2f  %9.2f\n", 
                     row, Float64(dt1), Float64(err), Float64(p), 
-                                       Float64(err_est), Float64(p_est))
+                    Float64(err_est), Float64(p_est), Float64(muls_per_dt))
             tab[row,1] = dt1
             tab[row,2] = err
             tab[row,3] = p 
             tab[row,4] = err_est
             tab[row,5] = p_est 
+            tab[row,6] = muls_per_dt 
         end
         err_old = err
         err_est_old = err_est
