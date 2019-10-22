@@ -2,15 +2,15 @@ module TimeDependentLinearODESystems
 
 using LinearAlgebra
 
-export expmv, expvmv!
 export TimeDependentMatrixState, TimeDependentSchroedingerMatrixState
 export TimeDependentMatrix, TimeDependentSchroedingerMatrix
 export CF2, CF4, CF4g6, CF4o, CF6, CF6n, CF6ng8, CF7, CF8, CF8C, CF8AF,  CF10, DoPri45, Magnus4
-export get_order, number_of_exponentials
 export load_example
 export EquidistantTimeStepper, local_orders, local_orders_est
 export AdaptiveTimeStepper, EquidistantCorrectedTimeStepper
 export global_orders, global_orders_corr
+
+include("expmv.jl")
 
 
 """
@@ -61,8 +61,29 @@ function *(A::TimeDependentMatrixState, B)
     Y
 end
 
+mul1!(Y, A::TimeDependentMatrixState, B) = mul!(Y, A, B)
+function mul1!(Y, A::TimeDependentSchroedingerMatrixState, B) 
+    mul!(Y, A, B)
+    Y[:] *= -1im
+end
 
-include("expmv.jl")
+function expmv1!(y, dt, A::TimeDependentMatrixState, x, tol, m, wsp) 
+   if tol==0
+       y[:] = exp(dt*full(A))*x
+   else
+       expmv!(y, dt, A, x, tol=tol, m=m, wsp=wsp) 
+   end
+end
+
+function expmv1!(y, dt, A::TimeDependentSchroedingerMatrixState, x, tol, m, wsp) 
+   if tol==0
+       y[:] = exp(-1im*dt*full(A))*x
+   else
+       expmv!(y, -1im*dt, A, x, tol=tol, m=m, wsp=wsp) 
+   end
+end
+
+
 
 load_example(name::String) = include(string(dirname(@__FILE__),"/../examples/",name))
 
@@ -265,35 +286,14 @@ CF10 = CommutatorFreeScheme(
 
 
 
-function step!(psi::Union{Array{Float64,1},Array{Complex{Float64},1}}, 
-               H::TimeDependentMatrix, 
-               t::Real, dt::Real, scheme::CommutatorFreeScheme,
-               wsp::Union{Vector{Vector{Float64}},Vector{Vector{Complex{Float64}}}}; 
-               expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
-    tt = t .+ dt*scheme.c
-    for j=1:number_of_exponentials(scheme)
-        H1 = H(tt, scheme.A[j,:])
-        if expmv_tol==0
-            psi[:] = exp(dt*full(H1))*psi
-        else
-            expmv!(psi, dt, H1, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-        end
-    end
-end  
-
-
-function step!(psi::Array{Complex{Float64},1}, H::TimeDependentSchroedingerMatrix, 
+function step!(psi::Array{Complex{Float64},1}, H::TimeDependentMatrix, 
                t::Real, dt::Real, scheme::CommutatorFreeScheme,
                wsp::Vector{Vector{Complex{Float64}}}; 
                expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     tt = t .+ dt*scheme.c
     for j=1:number_of_exponentials(scheme)
-        H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=false)
-        if expmv_tol==0
-            psi[:] = exp(-1im*dt*full(H1))*psi
-        else
-            expmv!(psi, -1im*dt, H1, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-        end
+        H1 = H(tt, scheme.A[j,:])
+        expmv1!(psi, dt, H1, psi, expmv_tol, expmv_m, wsp)
     end
 end  
 
@@ -319,124 +319,124 @@ function Gamma!(r::Vector{Complex{Float64}},
         end
     end
     #s2=B*u
-    mul!(s2, H, u)
+    mul1!(s2, H, u)
     r[:] = s2[:] 
     if p>=1
         #s1=A*u
-        mul!(s1, Hd, u)
+        mul1!(s1, Hd, u)
         r[:] += f1*s1[:] 
     end
     if p>=2
         #s1=B*s1=BAu
-        mul!(s1a, H, s1)
+        mul1!(s1a, H, s1)
         r[:] += f2*s1a[:] 
     end
     if p>=3
         #s1=B*s1=BBAu
-        mul!(s1, H, s1a)
+        mul1!(s1, H, s1a)
         r[:] += f3*s1[:] 
     end
     if p>=4
         #s1=B*s1=BBBAu
-        mul!(s1a, H, s1)
+        mul1!(s1a, H, s1)
         r[:] += f4*s1a[:] 
     end
     if p>=5
         #s1=B*s1=BBBBAu
-        mul!(s1, H, s1a)
+        mul1!(s1, H, s1a)
         r[:] += f5*s1[:] 
     end
     if p>=6
         #s1=B*s1=BBBBBAu
-        mul!(s1a, H, s1)
+        mul1!(s1a, H, s1)
         r[:] += f6*s1a[:] 
     end
 
     if p>=2
         #s1=A*s2=ABu
-        mul!(s1, Hd, s2)
+        mul1!(s1, Hd, s2)
         r[:] -= f2*s1[:] 
     end
     if p>=3
         #s1=B*s1=BABu
-        mul!(s1a, H, s1)
+        mul1!(s1a, H, s1)
         r[:] -= (2*f3)*s1a[:] 
     end
     if p>=4
         #s1=B*s1=BBABu
-        mul!(s1, H, s1a)
+        mul1!(s1, H, s1a)
         r[:] -= (3*f4)*s1[:] 
     end
     if p>=5
         #s1=B*s1=BBBABu
-        mul!(s1a, H, s1)
+        mul1!(s1a, H, s1)
         r[:] -= (4*f5)*s1a[:] 
     end
     if p>=6
         #s1=B*s1=BBBBABu
-        mul!(s1, H, s1a)
+        mul1!(s1, H, s1a)
         r[:] -= (5*f6)*s1[:] 
     end
 
     if p>=3
         #s2=B*s2=BBu
-        mul!(s2a, H, s2)
+        mul1!(s2a, H, s2)
         #s1=A*s2=ABBu
-        mul!(s1, Hd, s2a)
+        mul1!(s1, Hd, s2a)
         r[:] += f3*s1
     end
     if p>=4
         #s1=B*s1=BABBu
-        mul!(s1a, H, s1)
+        mul1!(s1a, H, s1)
         r[:] += (3*f4)*s1a
     end
     if p>=5
         #s1=B*s1=BBABBu
-        mul!(s1, H, s1a)
+        mul1!(s1, H, s1a)
         r[:] += (6*f5)*s1
     end
     if p>=6
         #s1=B*s1=BBBABBu
-        mul!(s1a, H, s1)
+        mul1!(s1a, H, s1)
         r[:] += (10*f6)*s1a
     end
 
     if p>=4
         #s2=B*s2=BBBu
-        mul!(s2, H, s2a)
+        mul1!(s2, H, s2a)
         #s1=A*s2=ABBBu
-        ;  mul!(s1, Hd, s2)
+        mul1!(s1, Hd, s2)
         r[:] -= f4*s1
     end
     if p>=5
         #s1=B*s1=BABBBu
-        mul!(s1a, H, s1)
+        mul1!(s1a, H, s1)
         r[:] -= (4*f5)*s1a
     end
     if p>=6
         #s1=B*s1=BBABBBu
-        mul!(s1, H, s1a)
+        mul1!(s1, H, s1a)
         r[:] -= (10*f6)*s1
     end
 
     if p>=5
         #s2=B*s2=BBBBu
-        mul!(s2a, H, s2)
+        mul1!(s2a, H, s2)
         #s1=A*s2=ABBBBu
-        mul!(s1, Hd, s2a)
+        mul1!(s1, Hd, s2a)
         r[:] += f5*s1
     end
     if p>=6
         #s1=B*s1=BABBBBu
-        mul!(s1a, H, s1)
+        mul1!(s1a, H, s1)
         r[:] += (5*f6)*s1a
     end
 
     if p>=6
         #s2=B*s2=BBBBBu
-        mul!(s2, H, s2a)
+        mul1!(s2, H, s2a)
         #s1=A*s2=ABBBBBu
-        mul!(s1, Hd, s2)
+        mul1!(s1, Hd, s2)
         r[:] -= f6*s1
     end
 end
@@ -445,49 +445,44 @@ function CC!(r::Vector{Complex{Float64}},
              H::TimeDependentMatrixState, Hd::TimeDependentMatrixState,
              u::Vector{Complex{Float64}}, sign::Int, dt::Float64, 
              s::Vector{Complex{Float64}}, s1::Vector{Complex{Float64}})
-    mul!(s, Hd, u)
+    mul1!(s, Hd, u)
     r[:] = 0.5*dt*s[:]
-    mul!(s1, H, s)
+    mul1!(s1, H, s)
     r[:] += (sign*dt^2/12)*s1
-    mul!(s, H, u)
+    mul1!(s, H, u)
     r[:] += 0.5*s[:]
-    mul!(s1, Hd, s)
+    mul1!(s1, Hd, s)
     r[:] -= (sign*dt^2/12)*s1
 end
 
 
 
 function step_estimated_CF2_trapezoidal_rule!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
-                 H::TimeDependentSchroedingerMatrix, 
+                 H::TimeDependentMatrix, 
                  t::Real, dt::Real,
                  wsp::Vector{Vector{Complex{Float64}}}; 
                  expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     n = size(H, 2)
     s = wsp[1]
 
-    H1d = H(t+0.5*dt, matrix_times_minus_i=true, compute_derivative=true)
-    mul!(psi_est, H1d, psi)
+    H1d = H(t+0.5*dt, compute_derivative=true)
+    mul1!(psi_est, H1d, psi)
     psi_est[:] *= 0.25*dt
 
-    H1 = H(t+0.5*dt, matrix_times_minus_i=false)
-    if expmv_tol==0
-        psi[:] = exp(-1im*dt*full(H1))*psi
-        psi_est[:] = exp(-1im*dt*full(H1))*psi_est
-    else
-        expmv!(psi, -1im*dt, H1, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-        expmv!(psi_est, -1im*dt, H1, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
-    end
+    H1 = H(t+0.5*dt)
+    expmv1!(psi, dt, H1, psi, expmv_tol, expmv_m, wsp)
+    expmv1!(psi_est, dt, H1, psi_est, expmv_tol, expmv_m, wsp)
 
-    H1 = H(t+0.5*dt, matrix_times_minus_i=true)
-    mul!(s, H1, psi)
+    H1 = H(t+0.5*dt)
+    mul1!(s, H1, psi)
     psi_est[:] += s[:]
 
-    H1 = H(t+dt, matrix_times_minus_i=true)
-    mul!(s, H1, psi)
+    H1 = H(t+dt)
+    mul1!(s, H1, psi)
     psi_est[:] -= s[:]
 
-    H1d = H(t+0.5*dt, matrix_times_minus_i=true, compute_derivative=true)
-    mul!(s, H1d, psi)
+    H1d = H(t+0.5*dt, compute_derivative=true)
+    mul1!(s, H1d, psi)
     psi_est[:] += 0.25*dt*s[:]
 
     psi_est[:] *= dt/3
@@ -496,7 +491,7 @@ end
 
 
 function step_estimated_CF2_symm_def!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
-                 H::TimeDependentSchroedingerMatrix, 
+                 H::TimeDependentMatrix, 
                  t::Real, dt::Real,
                  wsp::Vector{Vector{Complex{Float64}}}; 
                  expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
@@ -504,25 +499,20 @@ function step_estimated_CF2_symm_def!(psi::Array{Complex{Float64},1}, psi_est::A
     n = size(H, 2)
     s = wsp[1]
 
-    H1 = H(t, matrix_times_minus_i=true)
-    mul!(psi_est, H1, psi)
+    H1 = H(t)
+    mul1!(psi_est, H1, psi)
     psi_est[:] *= -0.5
 
-    H1 = H(t+0.5*dt, matrix_times_minus_i=false)
-    if expmv_tol==0
-        psi_est[:] = exp(-1im*dt*full(H1))*psi_est
-        psi[:] = exp(-1im*dt*full(H1))*psi
-    else
-        expmv!(psi, -1im*dt, H1, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-        expmv!(psi_est, -1im*dt, H1, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
-    end
+    H1 = H(t+0.5*dt)
+    expmv1!(psi, dt, H1, psi, expmv_tol, expmv_m, wsp)
+    expmv1!(psi_est, dt, H1, psi_est, expmv_tol, expmv_m, wsp)
     
-    H1 = H(t+0.5*dt, matrix_times_minus_i=true)
-    mul!(s, H1, psi)
+    H1 = H(t+0.5*dt)
+    mul1!(s, H1, psi)
     psi_est[:] += s[:]
 
-    H1 = H(t+dt, matrix_times_minus_i=true)
-    mul!(s, H1, psi)
+    H1 = H(t+dt)
+    mul1!(s, H1, psi)
     s[:] *= 0.5
     psi_est[:] -= s[:]
     
@@ -531,7 +521,7 @@ end
 
 
 function step_estimated_adjoint_based!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
-                 H::TimeDependentSchroedingerMatrix, 
+                 H::TimeDependentMatrix, 
                  t::Real, dt::Real,
                  scheme::CommutatorFreeScheme,
                  wsp::Vector{Vector{Complex{Float64}}}; 
@@ -541,15 +531,10 @@ function step_estimated_adjoint_based!(psi::Array{Complex{Float64},1}, psi_est::
     psi_est[:] = psi[:]
     J = number_of_exponentials(scheme)
     for j=1:J
-        H1 = H(tt1, scheme.A[j,:], matrix_times_minus_i=false)
-        H2 = H(tt2, scheme.A[J+1-j,:], matrix_times_minus_i=false)
-        if expmv_tol==0
-            psi[:] = exp(-1im*dt*full(H1))*psi
-            psi_est[:] = exp(-1im*dt*full(H2))*psi_est
-        else
-            expmv!(psi, -1im*dt, H1, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-            expmv!(psi_est, -1im*dt, H2, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
-        end
+        H1 = H(tt1, scheme.A[j,:])
+        H2 = H(tt2, scheme.A[J+1-j,:])
+        expmv1!(psi, dt, H1, psi, expmv_tol, expmv_m, wsp)
+        expmv1!(psi_est, dt, H2, psi_est, expmv_tol, expmv_m, wsp)
     end
     psi_est[:] -= psi[:]
     psi_est[:] *= -0.5
@@ -557,7 +542,7 @@ end
 
 
 function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
-                 H::TimeDependentSchroedingerMatrix, 
+                 H::TimeDependentMatrix, 
                  t::Real, dt::Real,
                  scheme::CommutatorFreeScheme,
                  wsp::Vector{Vector{Complex{Float64}}}; 
@@ -588,8 +573,8 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     tt = t .+ dt*scheme.c
 
     if scheme.symmetrized_defect
-        H1 = H(t, matrix_times_minus_i=true)
-        mul!(psi_est, H1, psi)
+        H1 = H(t)
+        mul1!(psi_est, H1, psi)
         psi_est[:] *= -0.5
     else
         psi_est[:] .= 0.0
@@ -598,28 +583,21 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     J = number_of_exponentials(scheme)
 
     for j=1:J
-        H1 = H(tt, scheme.A[j,:], matrix_times_minus_i=true)
+        H1 = H(tt, scheme.A[j,:])
         if scheme.symmetrized_defect
-            H1d = H(tt, (scheme.c .- 0.5).*scheme.A[j,:], compute_derivative=true, matrix_times_minus_i=true)
+            H1d = H(tt, (scheme.c .- 0.5).*scheme.A[j,:], compute_derivative=true)
         else
-            H1d = H(tt, scheme.c.*scheme.A[j,:], compute_derivative=true, matrix_times_minus_i=true)
+            H1d = H(tt, scheme.c.*scheme.A[j,:], compute_derivative=true)
         end
         if scheme.trapezoidal_rule 
             CC!(s, H1, H1d, psi, -1, dt, s1, s2)
             psi_est[:] += s[:]
         end
 
-        H1e = H(tt, scheme.A[j,:], matrix_times_minus_i=false)
-        if expmv_tol==0
-            psi[:] = exp(-1im*dt*full(H1e))*psi
-            if scheme.symmetrized_defect || scheme.trapezoidal_rule || j>1
-                psi_est[:] = exp(-1im*dt*full(H1e))*psi_est
-            end
-        else
-            expmv!(psi, -1im*dt, H1e, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-            if scheme.symmetrized_defect || scheme.trapezoidal_rule || j>1
-                expmv!(psi_est, -1im*dt, H1e, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
-            end
+        H1e = H(tt, scheme.A[j,:])
+        expmv1!(psi, dt, H1e, psi, expmv_tol, expmv_m, wsp)
+        if scheme.symmetrized_defect || scheme.trapezoidal_rule || j>1
+            expmv1!(psi_est, dt, H1e, psi_est, expmv_tol, expmv_m, wsp)
         end
     
         if scheme.trapezoidal_rule
@@ -630,8 +608,8 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         psi_est[:] += s[:]
     end
    
-    H1 = H(t+dt, matrix_times_minus_i=true)
-    mul!(s, H1, psi)
+    H1 = H(t+dt)
+    mul1!(s, H1, psi)
     if scheme.symmetrized_defect
         s[:] *= 0.5
     end
@@ -641,86 +619,6 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
 
 end
 
-
-
-function step_estimated!(psi::T,
-                         psi_est::T,
-                         H::TimeDependentMatrix, 
-                         t::Real, dt::Real,
-                         scheme::CommutatorFreeScheme, 
-                         wsp::Union{Vector{Vector{Float64}},Vector{Vector{Complex{Float64}}}}; 
-                         expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1))) where T<:Union{Array{Float64,1},Array{Complex{Float64},1}}
-    n = size(H, 2)
-    s = wsp[1]
-    s1 = wsp[2]
-    s2 = wsp[3]
-    s1a = wsp[4]
-    s2a = wsp[5]
-
-    tt = t+dt*scheme.c
-
-    if scheme.symmetrized_defect
-        H1 = H(t)
-        mul!(psi_est, H1, psi)
-        psi_est[:] *= -0.5
-        
-        H1 = H(tt, scheme.A[1,:])
-        if expmv_tol==0
-            psi_est[:] = exp(dt*full(H1))*psi_est
-        else
-            expmv!(psi_est, dt, H1, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
-        end
-    else
-        psi_est[:] .= 0.0
-    end
-    
-    H1 = H(tt, scheme.A[1,:])
-    if expmv_tol==0
-        psi[:] = exp(dt*full(H1))*psi
-    else
-        expmv!(psi, dt, H1, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-    end
-
-    if scheme.symmetrized_defect
-        H1d = H(tt, (scheme.c-0.5).*scheme.A[1,:], compute_derivative=true)
-    else
-        H1d = H(tt, scheme.c.*scheme.A[1,:], compute_derivative=true)
-    end
-    Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a, modified_Gamma=modified_Gamma)
-    psi_est[:] += s[:]
-
-    for j=2:number_of_exponentials(scheme)
-
-        H1 = H(tt, scheme.A[j,:])
-        if expmv_tol==0
-            psi_est[:] = exp(dt*full(H1))*psi_est
-            psi[:] = exp(dt*full(H1))*psi
-        else            
-            expmv!(psi, dt, H1, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-            expmv!(psi_est, dt, H1, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
-        end
-
-        if scheme.symmetrized_defect
-            H1d = H(tt, (scheme.c-0.5).*scheme.A[j,:], compute_derivative=true)
-        else
-            H1d = H(tt, scheme.c.*scheme.A[j,:], compute_derivative=true)
-        end
-        Gamma!(s, H1, H1d, psi, scheme.p, dt, s1, s2, s1a, s2a, modified_Gamma=scheme.modified_Gamma)
-
-        psi_est[:] += s[:]
-
-    end
-   
-    #  s = A(t+dt)*psi
-    H1 = H(t+dt)
-    mul!(s, H1, psi)
-    #  psi_est = psi_est-s
-    psi_est[:] -= s[:]
-
-    # psi_est = psi_est*dt/(p+1)
-    psi_est[:] *= dt/(scheme.p+1)
-
-end
 
 
 mutable struct EmbeddedRungeKuttaScheme <:Scheme
@@ -774,7 +672,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
               end
           end
           H1 = H(t+scheme.c[l]*dt)
-          mul!(K[l], H1, s)
+          mul1!(K[l], H1, s)
       end
       psi[:] = s[:]
       s[:] .= 0.0
@@ -784,7 +682,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
           end
       end
       H1 = H(t+dt)
-      mul!(psi_est, H1, s)
+      mul1!(psi_est, H1, s)
       #psi_est[:] -= psi[:]
       # TODO: K[7] can be reused as K[1] for the next step (FSAL, first same as last)
 end
@@ -864,13 +762,13 @@ LinearAlgebra.checksquare(H::Magnus4DerivativeState) = checksquare(H.H1)
 
 function LinearAlgebra.mul!(Y, H::Magnus4State, B)
     X = H.s 
-    mul!(X, H.H1, B)
+    mul1!(X, H.H1, B)
     Y[:] = 0.5*X[:]
-    mul!(X, H.H2, X)
+    mul1!(X, H.H2, X)
     Y[:] += H.f_dt*X[:]
-    mul!(X, H.H2, B)
+    mul1!(X, H.H2, B)
     Y[:] += 0.5*X[:]
-    mul!(X, H.H1, X)
+    mul1!(X, H.H1, X)
     Y[:] -= H.f_dt*X[:]
 end
 
@@ -884,53 +782,49 @@ function LinearAlgebra.mul!(Y, H::Magnus4DerivativeState, B)
     X = H.s 
     X1 = H.s1
 
-    mul!(X, H.H1d, B)
+    mul1!(X, H.H1d, B)
     Y[:] = (0.5*H.c1)*X[:]
-    mul!(X, H.H2, X)
+    mul1!(X, H.H2, X)
     Y[:] += (H.f*H.c1*H.dt)*X[:]
 
-    mul!(X, H.H2d, B)
+    mul1!(X, H.H2d, B)
     Y[:] += (0.5*H.c2)*X[:] 
-    mul!(X, H.H1, X)
+    mul1!(X, H.H1, X)
     Y[:] -= (H.f*H.c2*H.dt)*X[:]
 
-    mul!(X, H.H1, B)
-    mul!(X1, H.H2, X)
+    mul1!(X, H.H1, B)
+    mul1!(X1, H.H2, X)
     Y[:] += H.f*X1[:]
-    mul!(X1, H.H2d, X)
+    mul1!(X1, H.H2d, X)
     Y[:] += (H.f*H.c2*H.dt)*X1[:]
 
-    mul!(X, H.H2, B)
-    mul!(X1, H.H1, X)
+    mul1!(X, H.H2, B)
+    mul1!(X1, H.H1, X)
     Y[:] -= H.f*X1[:]
-    mul!(X1, H.H1d, X)
+    mul1!(X1, H.H1d, X)
     Y[:] -= (H.f*H.c1*H.dt)*X1[:]
 end
 
 
 
-function step!(psi::Array{Complex{Float64},1}, H::TimeDependentSchroedingerMatrix, 
+function step!(psi::Array{Complex{Float64},1}, H::TimeDependentMatrix, 
                t::Real, dt::Real, scheme::MagnusScheme,
                wsp::Vector{Vector{Complex{Float64}}}; 
                expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     sqrt3 = sqrt(3)
     c1 = 1/2-sqrt3/6
     c2 = 1/2+sqrt3/6
-    H1 = H(t + c1*dt, matrix_times_minus_i=false)
-    H2 = H(t + c2*dt, matrix_times_minus_i=false)
+    H1 = H(t + c1*dt)
+    H2 = H(t + c2*dt)
     f = sqrt3/12
     s = wsp[expmv_m+3]
     HH = Magnus4State(H1, H2, -1im*f*dt, s)
-    if expmv_tol==0
-        psi[:] = exp(-1im*dt*full(HH))*psi
-    else
-        expmv!(psi, -1im*dt, HH, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-    end
+    expmv1!(psi, dt, HH, psi, expmv_tol, expmv_m, wsp)
 end  
 
 
 function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
-                 H::TimeDependentSchroedingerMatrix, 
+                 H::TimeDependentMatrix, 
                  t::Real, dt::Real,
                  scheme::MagnusScheme,
                  wsp::Vector{Vector{Complex{Float64}}}; 
@@ -948,19 +842,19 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     s3 = wsp[expmv_m+3]
     s4 = wsp[expmv_m+4]
 
-    H1e = H(t + c1*dt, matrix_times_minus_i=false)
-    H2e = H(t + c2*dt, matrix_times_minus_i=false)
+    H1e = H(t + c1*dt)
+    H2e = H(t + c2*dt)
     HHe = Magnus4State(H1e, H2e, -1im*f*dt, s3)
 
-    H1 = H(t + c1*dt, matrix_times_minus_i=true)
-    H2 = H(t + c2*dt, matrix_times_minus_i=true)
-    H1d = H(t + c1*dt, matrix_times_minus_i=true, compute_derivative=true)
-    H2d = H(t + c2*dt, matrix_times_minus_i=true, compute_derivative=true)
+    H1 = H(t + c1*dt)
+    H2 = H(t + c2*dt)
+    H1d = H(t + c1*dt, compute_derivative=true)
+    H2d = H(t + c2*dt, compute_derivative=true)
     HH = Magnus4State(H1, H2, f*dt, s3)
     if scheme.symmetrized_defect
         HHd = Magnus4DerivativeState(H1, H2, H1d, H2d, dt, f, c1-1/2, c2-1/2, s3, s4)
-        H1 = H(t, matrix_times_minus_i=true)
-        mul!(psi_est, H1, psi)
+        H1 = H(t)
+        mul1!(psi_est, H1, psi)
         psi_est[:] *= -0.5
     else
         HHd = Magnus4DerivativeState(H1, H2, H1d, H2d, dt, f, c1, c2, s3, s4)
@@ -971,39 +865,25 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         CC!(s, HH, HHd, psi, -1, dt, s1, s2)
         psi_est[:] += s[:]
 
-        if expmv_tol==0
-            psi[:] = exp(-1im*dt*full(HHe))*psi
-            psi_est[:] = exp(-1im*dt*full(HHe))*psi_est
-        else
-            expmv!(psi, -1im*dt, HHe, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-            expmv!(psi_est, -1im*dt, HHe, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
-        end
+        expmv1!(psi, dt, HHe, psi, expmv_tol, expmv_m, wsp)
+        expmv1!(psi_est, dt, HHe, psi_est, expmv_tol, expmv_m, wsp)
         
         CC!(s, HH, HHd, psi, +1, dt, s1, s2)
         psi_est[:] += s[:]
     else
         if scheme.symmetrized_defect
-            if expmv_tol==0
-                psi[:] = exp(-1im*dt*full(HHe))*psi
-                psi_est[:] = exp(-1im*dt*full(HHe))*psi_est
-            else
-                expmv!(psi, -1im*dt, HHe, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-                expmv!(psi_est, -1im*dt, HHe, psi_est, tol=expmv_tol, m=expmv_m, wsp=wsp)
-            end
+            expmv1!(psi, dt, HHe, psi, expmv_tol, expmv_m, wsp)
+            expmv1!(psi_est, dt, HHe, psi_est, expmv_tol, expmv_m, wsp)
         else
-            if expmv_tol==0
-                psi[:] = exp(-1im*dt*full(HHe))*psi
-            else
-                expmv!(psi, -1im*dt, HHe, psi, tol=expmv_tol, m=expmv_m, wsp=wsp)
-            end
+            expmv1!(psi, dt, HHe, psi, expmv_tol, expmv_m, wsp)
         end
     
         Gamma!(s, HH, HHd, psi, 4, dt, s1, s2, s1a, s2a, modified_Gamma=scheme.modified_Gamma)
         psi_est[:] += s[:]
     end
 
-    H1 = H(t + dt, matrix_times_minus_i=true)
-    mul!(s, H1, psi)
+    H1 = H(t + dt)
+    mul1!(s, H1, psi)
     if scheme.symmetrized_defect
         s[:] *= 0.5
     end
@@ -1262,6 +1142,7 @@ struct AdaptiveTimeStepper
     tol::Float64
     order::Int
     scheme::Scheme
+    dt_max::Float64
     expmv_tol::Float64
     expmv_m::Int
     psi_est::Array{Complex{Float64},1}
@@ -1293,6 +1174,7 @@ struct AdaptiveTimeStepper
                  psi::Array{Complex{Float64},1},
                  t0::Real, tend::Real, dt::Real,  tol::Real; 
                  scheme::Scheme=CF4,
+                 dt_max::Real=Inf,
                  expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
         order = get_order(scheme)
 
@@ -1304,7 +1186,7 @@ struct AdaptiveTimeStepper
         psi0 = zeros(Complex{Float64}, size(H, 2))
         
         new(H, psi, t0, tend, dt, tol, order, scheme, 
-            expmv_tol, expmv_m, 
+            dt_max, expmv_tol, expmv_m, 
             psi_est, psi0, wsp)
     end
     
@@ -1330,7 +1212,7 @@ function Base.iterate(ats::AdaptiveTimeStepper,
     ats.psi0[:] = ats.psi[:]
     err = 2.0
     while err>=1.0
-        dt = min(dt, ats.tend-state.t)
+        dt = min(dt, ats.tend-state.t, ats.dt_max)
         dt0 = dt
         step_estimated!(ats.psi, ats.psi_est, ats.H, state.t, dt, ats.scheme, ats.wsp,
                         expmv_tol=ats.expmv_tol, expmv_m=ats.expmv_m)

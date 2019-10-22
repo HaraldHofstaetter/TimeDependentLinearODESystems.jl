@@ -34,7 +34,6 @@ Base.show(io::IO, x::RosenZener) = print(io, "RosenZener(V0=$(x.V0), omega=$(x.o
 
 
 mutable struct RosenZenerState <: TimeDependentSchroedingerMatrixState
-    matrix_times_minus_i :: Bool
     compute_derivative :: Bool
     c1::Float64
     c2::Float64
@@ -43,8 +42,7 @@ mutable struct RosenZenerState <: TimeDependentSchroedingerMatrixState
 end
 
 
-function (H::RosenZener)(t::Real; compute_derivative::Bool=false,
-                                  matrix_times_minus_i::Bool=true)
+function (H::RosenZener)(t::Real; compute_derivative::Bool=false)
     if  compute_derivative
         c1 = -H.V0*H.omega*sin(H.omega*t)/cosh(t/H.T0)-H.V0*cos(H.omega*t)*sinh(t/H.T0)/(cosh(t/H.T0)^2*H.T0)
         c2 = -H.V0*H.omega*cos(H.omega*t)/cosh(t/H.T0)+H.V0*sin(H.omega*t)*sinh(t/H.T0)/(cosh(t/H.T0)^2*H.T0)
@@ -53,12 +51,12 @@ function (H::RosenZener)(t::Real; compute_derivative::Bool=false,
         c2 = -H.V0*sin(H.omega*t)/cosh(t/H.T0)
     end
     
-    RosenZenerState(matrix_times_minus_i, compute_derivative, c1, c2, H)
+    RosenZenerState(compute_derivative, c1, c2, H)
 end
 
 
 function (H::RosenZener)(t::Vector{Float64}, c::Vector{Float64};
-                  compute_derivative::Bool=false, matrix_times_minus_i::Bool=true)
+                  compute_derivative::Bool=false)
     n = length(t)
     @assert n==length(c)&&n>0 "t, c must be vectors of same length>1"
     if  compute_derivative
@@ -69,7 +67,7 @@ function (H::RosenZener)(t::Vector{Float64}, c::Vector{Float64};
         c2 = sum([-c[j]*H.V0*sin(H.omega*t[j])/cosh(t[j]/H.T0) for j=1:n])
     end
 
-    RosenZenerState(matrix_times_minus_i, compute_derivative, c1, c2, H)
+    RosenZenerState(compute_derivative, c1, c2, H)
 end
 
 
@@ -77,9 +75,6 @@ end
 
 function LinearAlgebra.mul!(Y, H::RosenZenerState, B)
     Y[:] = H.c1*(H.H.H1*B) + H.c2*(H.H.H2*B)
-    if H.matrix_times_minus_i
-        Y[:] *= -1im
-    end
 end
 
 
@@ -90,8 +85,8 @@ LinearAlgebra.size(H::RosenZenerState) = size(H.H)
 LinearAlgebra.size(H::RosenZenerState, dim::Int) = size(H.H, dim)
 
 LinearAlgebra.eltype(H::RosenZenerState) = Complex{Float64}
-LinearAlgebra.issymmetric(H::RosenZenerState) = !H.matrix_times_minus_i && H.c2==0.0 
-LinearAlgebra.ishermitian(H::RosenZenerState) = !H.matrix_times_minus_i 
+LinearAlgebra.issymmetric(H::RosenZenerState) = H.c2==0.0 
+LinearAlgebra.ishermitian(H::RosenZenerState) = true 
 LinearAlgebra.checksquare(H::RosenZenerState) = H.H.d
 
 function LinearAlgebra.norm(H::RosenZenerState, p::Real=2)
@@ -103,8 +98,7 @@ function LinearAlgebra.norm(H::RosenZenerState, p::Real=2)
     abs(H.c1)*H.H.norm_H1 + abs(H.c2)*H.H.norm_H2
 end
 
-full(H::RosenZenerState) = (H.matrix_times_minus_i ? -1im*Matrix(H.c1*(H.H.H1) + H.c2*(H.H.H2))
-                                                   :      Matrix(H.c1*(H.H.H1) + H.c2*(H.H.H2)))
+full(H::RosenZenerState) = Matrix(H.c1*(H.H.H1) + H.c2*(H.H.H2))
 
 
 

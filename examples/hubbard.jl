@@ -38,7 +38,6 @@ end
 
 
 mutable struct HubbardState <: TimeDependentSchroedingerMatrixState
-    matrix_times_minus_i :: Bool
     compute_derivative :: Bool
     fac_diag     :: Float64
     fac_offdiag  :: Complex{Float64}
@@ -49,8 +48,7 @@ end
 """
 Represents `H` evaluated at time `t`
 """
-function (H::Hubbard)(t::Real; compute_derivative::Bool=false,
-                               matrix_times_minus_i::Bool=true)
+function (H::Hubbard)(t::Real; compute_derivative::Bool=false)
     if  compute_derivative
         fac_diag = 0.0
         fac_offdiag = H.fd(t)
@@ -59,7 +57,7 @@ function (H::Hubbard)(t::Real; compute_derivative::Bool=false,
         fac_offdiag = H.f(t)
     end
     
-    HubbardState(matrix_times_minus_i, compute_derivative, fac_diag, fac_offdiag, H)
+    HubbardState(compute_derivative, fac_diag, fac_offdiag, H)
 end
 
 """
@@ -69,8 +67,7 @@ This is needed for the integration routine, where `c` are the weights
 and `t` are the points needed in evaluation.
 """
 function (H::Hubbard)(t::Vector{Float64}, c::Vector{Float64};
-                      compute_derivative::Bool=false,
-                      matrix_times_minus_i::Bool=true)
+                      compute_derivative::Bool=false)
     n = length(t)
     @assert n==length(c)&&n>0 "t, c must be vectors of same length>1"
     if  compute_derivative
@@ -81,7 +78,7 @@ function (H::Hubbard)(t::Vector{Float64}, c::Vector{Float64};
         fac_offdiag = sum([c[j]*H.f(t[j]) for j=1:n])
     end
     
-    HubbardState(matrix_times_minus_i, compute_derivative, fac_diag, fac_offdiag, H)
+    HubbardState(compute_derivative, fac_diag, fac_offdiag, H)
 end
 
 
@@ -404,9 +401,6 @@ function LinearAlgebra.mul!(Y, H::HubbardState, B)
             Y[:] = H.fac_diag*(H.H.H_diag.*B) + fac_symm*(H.H.H_upper_symm*B) + (1im*fac_anti)*(H.H.H_upper_anti*B) 
         end
     end
-    if H.matrix_times_minus_i
-        Y[:] *= -1im
-    end
     H.H.counter += 1
 end
 
@@ -419,7 +413,7 @@ LinearAlgebra.size(H::HubbardState, dim::Int) = size(H.H, dim)
 
 LinearAlgebra.eltype(H::HubbardState) = imag(H.fac_offdiag)==0.0 ? Float64 : Complex{Float64}
 LinearAlgebra.issymmetric(H::HubbardState) = imag(H.fac_offdiag)==0.0 
-LinearAlgebra.ishermitian(H::HubbardState) = !H.matrix_times_minus_i 
+LinearAlgebra.ishermitian(H::HubbardState) = true
 LinearAlgebra.checksquare(H::HubbardState) = H.H.N_psi 
 
 
@@ -466,11 +460,11 @@ function full(H::HubbardState)
     fac_anti = imag(H.fac_offdiag)
 
     if H.H.store_upper_part_only
-        return (H.matrix_times_minus_i ? -1im : 1)*(
+        return (
             diagm(0 => H.fac_diag*(H.H.H_diag)) + fac_symm*(H.H.H_upper_symm + H.H.H_upper_symm') +  
             (1im*fac_anti)*(H.H.H_upper_anti - H.H.H_upper_anti'))
     else
-        return (H.matrix_times_minus_i ? -1im : 1)*(
+        return (
             diagm(0 => H.fac_diag*(H.H.H_diag)) + fac_symm*(H.H.H_upper_symm) + (1im*fac_anti)*(H.H.H_upper_anti)) 
     end
 end
