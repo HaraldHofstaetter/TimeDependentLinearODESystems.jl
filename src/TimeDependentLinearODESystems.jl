@@ -729,17 +729,17 @@ number_of_exponentials(::MagnusScheme) = 1
 struct Magnus4State <: TimeDependentMatrixState
     H1::TimeDependentMatrixState
     H2::TimeDependentMatrixState
-    f_dt::Complex{Float64}
+    f_dt::Float64
     s::Array{Complex{Float64},1}
 end
 
 struct Magnus4DerivativeState <: TimeDependentMatrixState
-    H1::TimeDependentSchroedingerMatrixState
-    H2::TimeDependentSchroedingerMatrixState
-    H1d::TimeDependentSchroedingerMatrixState
-    H2d::TimeDependentSchroedingerMatrixState
+    H1::TimeDependentMatrixState
+    H2::TimeDependentMatrixState
+    H1d::TimeDependentMatrixState
+    H2d::TimeDependentMatrixState
     dt::Float64
-    f::Complex{Float64}
+    f::Float64
     c1::Float64
     c2::Float64
     s::Array{Complex{Float64},1}
@@ -775,10 +775,13 @@ function LinearAlgebra.mul!(Y, H::Magnus4State, B)
     Y[:] -= H.f_dt*X[:]
 end
 
-function full(H::Magnus4State) 
-    H1 = full(H.H1)
-    H2 = full(H.H2)
-    0.5*(H1+H2)-H.f_dt*(H1*H2-H2*H1)
+full1(A::TimeDependentMatrixState) = full(A)
+full1(A::TimeDependentSchroedingerMatrixState) = -1im*full(A)
+
+function full(H::Magnus4State)     
+    H1 = full1(H.H1)
+    H2 = full1(H.H2)
+    0.5*(H1+H2)+H.f_dt*(H1*H2-H2*H1)
 end
 
 function LinearAlgebra.mul!(Y, H::Magnus4DerivativeState, B)
@@ -821,7 +824,7 @@ function step!(psi::Array{Complex{Float64},1}, H::TimeDependentMatrix,
     H2 = H(t + c2*dt)
     f = sqrt3/12
     s = wsp[expmv_m+3]
-    HH = Magnus4State(H1, H2, -1im*f*dt, s)
+    HH = Magnus4State(H1, H2, f*dt, s)
     expmv1!(psi, dt, HH, psi, expmv_tol, expmv_m, wsp)
 end  
 
@@ -847,7 +850,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
 
     H1e = H(t + c1*dt)
     H2e = H(t + c2*dt)
-    HHe = Magnus4State(H1e, H2e, -1im*f*dt, s3)
+    HHe = Magnus4State(H1e, H2e, f*dt, s3)
 
     H1 = H(t + c1*dt)
     H2 = H(t + c2*dt)
