@@ -597,10 +597,9 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
             psi_est[:] += s[:]
         end
 
-        H1e = H(tt, scheme.A[j,:])
-        expmv1!(psi, dt, H1e, psi, expmv_tol, expmv_m, wsp)
+        expmv1!(psi, dt, H1, psi, expmv_tol, expmv_m, wsp)
         if scheme.symmetrized_defect || scheme.trapezoidal_rule || j>1
-            expmv1!(psi_est, dt, H1e, psi_est, expmv_tol, expmv_m, wsp)
+            expmv1!(psi_est, dt, H1, psi_est, expmv_tol, expmv_m, wsp)
         end
     
         if scheme.trapezoidal_rule
@@ -848,10 +847,6 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     s3 = wsp[expmv_m+3]
     s4 = wsp[expmv_m+4]
 
-    H1e = H(t + c1*dt)
-    H2e = H(t + c2*dt)
-    HHe = Magnus4State(H1e, H2e, f*dt, s3)
-
     H1 = H(t + c1*dt)
     H2 = H(t + c2*dt)
     H1d = H(t + c1*dt, compute_derivative=true)
@@ -871,17 +866,17 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         CC!(s, HH, HHd, psi, -1, dt, s1, s2)
         psi_est[:] += s[:]
 
-        expmv1!(psi, dt, HHe, psi, expmv_tol, expmv_m, wsp)
-        expmv1!(psi_est, dt, HHe, psi_est, expmv_tol, expmv_m, wsp)
+        expmv1!(psi, dt, HH, psi, expmv_tol, expmv_m, wsp)
+        expmv1!(psi_est, dt, HH, psi_est, expmv_tol, expmv_m, wsp)
         
         CC!(s, HH, HHd, psi, +1, dt, s1, s2)
         psi_est[:] += s[:]
     else
         if scheme.symmetrized_defect
-            expmv1!(psi, dt, HHe, psi, expmv_tol, expmv_m, wsp)
-            expmv1!(psi_est, dt, HHe, psi_est, expmv_tol, expmv_m, wsp)
+            expmv1!(psi, dt, HH, psi, expmv_tol, expmv_m, wsp)
+            expmv1!(psi_est, dt, HH, psi_est, expmv_tol, expmv_m, wsp)
         else
-            expmv1!(psi, dt, HHe, psi, expmv_tol, expmv_m, wsp)
+            expmv1!(psi, dt, HH, psi, expmv_tol, expmv_m, wsp)
         end
     
         Gamma!(s, HH, HHd, psi, 4, dt, s1, s2, s1a, s2a, modified_Gamma=scheme.modified_Gamma)
