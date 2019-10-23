@@ -626,15 +626,15 @@ end
 mutable struct EmbeddedRungeKuttaScheme <:Scheme
     A::Array{Float64,2}
     c::Array{Float64,1}
-    e::Array{Float64,1}
+    b::Array{Float64,1}
     p::Int
     function EmbeddedRungeKuttaScheme(
             A::Array{Float64,2},
             c::Array{Float64,1},
-            e::Array{Float64,1},
+            b::Array{Float64,1},
             p::Int
             )
-        new(A,c,e,p)
+        new(A,c,b,p)
     end
 end
 
@@ -647,8 +647,7 @@ DoPri45 = EmbeddedRungeKuttaScheme(
            9017/3168  -355/33     46732/5247  49/176  -5103/18656   0.0     0.0
            35/384      0.0        500/1113    125/192 -2187/6784    11/84   0.0],
           [0.0, 1/5, 3/10, 4/5, 8/9, 1.0, 1.0],
-     #    [51279/57600, 0.0,        7571/16695,  393/640, -92097/339200, 187/2100, 1/40],
-          [71/57600,    0.0,       -71/16695,    71/1920,  -17253/339200, 22/525, -1/40],    
+          [5179/57600, 0.0,        7571/16695,  393/640, -92097/339200, 187/2100, 1/40],
           4
         )
 
@@ -676,16 +675,13 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
           H1 = H(t+scheme.c[l]*dt)
           mul1!(K[l], H1, s)
       end
-      psi[:] = s[:]
-      s[:] .= 0.0
+      psi_est[:] = s[:]
       for j=1:nstages
-          if scheme.e[j]!=0.0
-              s[:] += (dt*scheme.e[j])*K[j][:]
+          if scheme.b[j]!=0.0
+              psi[:] += (dt*scheme.b[j])*K[j][:]
           end
       end
-      H1 = H(t+dt)
-      mul1!(psi_est, H1, s)
-      #psi_est[:] -= psi[:]
+      psi_est[:] = psi[:] - psi_est[:]
       # TODO: K[7] can be reused as K[1] for the next step (FSAL, first same as last)
 end
 
@@ -1123,7 +1119,7 @@ function global_orders(H::TimeDependentMatrix,
                       t0::Real, tend::Real, dt::Real; 
                       scheme::Scheme=CF2, rows=8,
                       expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)),
-                      corrected_scheme::Bool=false)
+                      higher_order::Bool=false)
     tab = zeros(Float64, rows, 3)
 
     # allocate workspace
@@ -1137,7 +1133,7 @@ function global_orders(H::TimeDependentMatrix,
     println("             dt         err           C      p ")
     println("-----------------------------------------------")
     for row=1:rows
-        if corrected_scheme
+        if higher_order
             ets = EquidistantCorrectedTimeStepper(H, psi, t0, tend, dt1, 
                     scheme=scheme, expmv_tol=expmv_tol, expmv_m=expmv_m)
         else            
@@ -1177,6 +1173,7 @@ struct AdaptiveTimeStepper
     order::Int
     scheme::Scheme
     dt_max::Float64
+    higher_order::Bool
     expmv_tol::Float64
     expmv_m::Int
     psi_est::Array{Complex{Float64},1}
@@ -1209,6 +1206,7 @@ struct AdaptiveTimeStepper
                  t0::Real, tend::Real, dt::Real,  tol::Real; 
                  scheme::Scheme=CF4,
                  dt_max::Real=Inf,
+                 higher_order::Bool=false,
                  expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
         order = get_order(scheme)
 
@@ -1255,7 +1253,9 @@ function Base.iterate(ats::AdaptiveTimeStepper,
         if err>=1.0
            ats.psi[:] = ats.psi0
            @printf("t=%17.9e  err=%17.8e  dt=%17.8e  rejected...\n", Float64(state.t), Float64(err), Float64(dt))
-        end   
+        elseif ats.higher_order
+           ats.psi[:] -= ats.psi_est # corrected scheme                        
+        end
     end
     state.t + dt0, AdaptiveTimeStepperState(state.t+dt0, dt)
 end
