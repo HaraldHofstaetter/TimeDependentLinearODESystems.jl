@@ -134,11 +134,11 @@ function (CF::CommutatorFreeScheme)(;
     trapezoidal_rule::Bool=CF.trapezoidal_rule,
     modified_Gamma::Bool=CF.modified_Gamma,
     adjoint_based::Bool=CF.adjoint_based)
-    CF.symmetrized_defect=symmetrized_defect
-    CF.trapezoidal_rule=trapezoidal_rule
-    CF.modified_Gamma=modified_Gamma
-    CF.adjoint_based= adjoint_based
-    CF
+    CommutatorFreeScheme(CF.A, CF.c, CF.p,
+        symmetrized_defect=symmetrized_defect,
+        trapezoidal_rule=trapezoidal_rule,
+        modified_Gamma=modified_Gamma,
+        adjoint_based=adjoint_based)
 end
 
 get_order(scheme::CommutatorFreeScheme) = scheme.p
@@ -727,10 +727,10 @@ function (M::MagnusScheme)(;
     symmetrized_defect::Bool=M.symmetrized_defect,
     trapezoidal_rule::Bool=M.trapezoidal_rule,
     modified_Gamma::Bool=M.modified_Gamma)
-    M.symmetrized_defect=symmetrized_defect
-    M.trapezoidal_rule=trapezoidal_rule
-    M.modified_Gamma=modified_Gamma
-    M
+    MagnusScheme(M.p,
+        symmetrized_defect=symmetrized_defect,
+        trapezoidal_rule=trapezoidal_rule,
+        modified_Gamma=modified_Gamma)
 end
 
 Magnus4 = MagnusScheme(4)
