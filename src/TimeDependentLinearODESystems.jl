@@ -1218,7 +1218,7 @@ struct AdaptiveTimeStepper
         psi0 = zeros(Complex{Float64}, size(H, 2))
         
         new(H, psi, t0, tend, dt, tol, order, scheme, 
-            dt_max, expmv_tol, expmv_m, 
+            dt_max, higher_order, expmv_tol, expmv_m, 
             psi_est, psi0, wsp)
     end
     
