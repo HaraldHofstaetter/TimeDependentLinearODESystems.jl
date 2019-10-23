@@ -730,7 +730,12 @@ struct Magnus4State <: TimeDependentMatrixState
     H2::TimeDependentMatrixState
     f_dt::Float64
     s::Array{Complex{Float64},1}
+    is_schroedinger_matrix::Bool
+    function Magnus4State(H1, H2, f_dt, s, is_schroedinger_matrix=false)
+        new(H1, H2, f_dt, s, is_schroedinger_matrix)
+    end
 end
+
 
 struct Magnus4DerivativeState <: TimeDependentMatrixState
     H1::TimeDependentMatrixState
@@ -772,15 +777,20 @@ function LinearAlgebra.mul!(Y, H::Magnus4State, B)
     Y[:] += 0.5*X[:]
     mul1!(X, H.H1, X)
     Y[:] -= H.f_dt*X[:]
+    if H.is_schroedinger_matrix
+        Y[:] *= 1im
+    end
 end
 
-full1(A::TimeDependentMatrixState) = full(A)
-full1(A::TimeDependentSchroedingerMatrixState) = -1im*full(A)
 
 function full(H::Magnus4State)     
-    H1 = full1(H.H1)
-    H2 = full1(H.H2)
-    0.5*(H1+H2)+H.f_dt*(H1*H2-H2*H1)
+    H1 = full(H.H1)
+    H2 = full(H.H2)
+    if H.is_schroedinger_matrix
+        return 0.5*(H1+H2)+(1im*H.f_dt)*(H1*H2-H2*H1)
+    else        
+        return 0.5*(H1+H2)+H.f_dt*(H1*H2-H2*H1)
+    end
 end
 
 function LinearAlgebra.mul!(Y, H::Magnus4DerivativeState, B)
@@ -811,6 +821,17 @@ function LinearAlgebra.mul!(Y, H::Magnus4DerivativeState, B)
 end
 
 
+function expmv1!(y, dt, H::Magnus4State, x, tol, m, wsp) 
+    if H.is_schroedinger_matrix
+        if tol==0
+            y[:] = exp(-1im*dt*full(H))*x
+        else
+            expmv!(y, -1im*dt, H, x, tol=tol, m=m, wsp=wsp) 
+        end
+    else
+        expmv1!(y, dt, H, x, tol, m, wsp)
+    end
+end
 
 function step!(psi::Array{Complex{Float64},1}, H::TimeDependentMatrix, 
                t::Real, dt::Real, scheme::MagnusScheme,
@@ -823,7 +844,7 @@ function step!(psi::Array{Complex{Float64},1}, H::TimeDependentMatrix,
     H2 = H(t + c2*dt)
     f = sqrt3/12
     s = wsp[expmv_m+3]
-    HH = Magnus4State(H1, H2, f*dt, s)
+    HH = Magnus4State(H1, H2, f*dt, s, isa(H, TimeDependentSchroedingerMatrix))
     expmv1!(psi, dt, HH, psi, expmv_tol, expmv_m, wsp)
 end  
 
@@ -852,6 +873,7 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
     H1d = H(t + c1*dt, compute_derivative=true)
     H2d = H(t + c2*dt, compute_derivative=true)
     HH = Magnus4State(H1, H2, f*dt, s3)
+    HHe = Magnus4State(H1, H2, f*dt, s3, isa(H, TimeDependentSchroedingerMatrix)) 
     if scheme.symmetrized_defect
         HHd = Magnus4DerivativeState(H1, H2, H1d, H2d, dt, f, c1-1/2, c2-1/2, s3, s4)
         H1 = H(t)
@@ -866,17 +888,17 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
         CC!(s, HH, HHd, psi, -1, dt, s1, s2)
         psi_est[:] += s[:]
 
-        expmv1!(psi, dt, HH, psi, expmv_tol, expmv_m, wsp)
-        expmv1!(psi_est, dt, HH, psi_est, expmv_tol, expmv_m, wsp)
+        expmv1!(psi, dt, HHe, psi, expmv_tol, expmv_m, wsp)
+        expmv1!(psi_est, dt, HHe, psi_est, expmv_tol, expmv_m, wsp)
         
         CC!(s, HH, HHd, psi, +1, dt, s1, s2)
         psi_est[:] += s[:]
     else
         if scheme.symmetrized_defect
-            expmv1!(psi, dt, HH, psi, expmv_tol, expmv_m, wsp)
-            expmv1!(psi_est, dt, HH, psi_est, expmv_tol, expmv_m, wsp)
+            expmv1!(psi, dt, HHe, psi, expmv_tol, expmv_m, wsp)
+            expmv1!(psi_est, dt, HHe, psi_est, expmv_tol, expmv_m, wsp)
         else
-            expmv1!(psi, dt, HH, psi, expmv_tol, expmv_m, wsp)
+            expmv1!(psi, dt, HHe, psi, expmv_tol, expmv_m, wsp)
         end
     
         Gamma!(s, HH, HHd, psi, 4, dt, s1, s2, s1a, s2a, modified_Gamma=scheme.modified_Gamma)
