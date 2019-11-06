@@ -211,7 +211,7 @@ function TimeDependentLinearODESystems.step!(psi::Array{Complex{Float64},1}, H::
     #x = [1/2-sqrt(3/20), 1/2, 1/2+sqrt(3/20)] 
     #w = [5/18, 8/18, 5/18] 
 
-    tt = t+dt*x
+    tt = dt*x .+ t
 
     A = H(tt, w)
     B = get_B(H, t, dt, h1, h2, h3, h4, h5)

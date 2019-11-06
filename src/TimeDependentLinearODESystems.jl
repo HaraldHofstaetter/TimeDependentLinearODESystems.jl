@@ -4,7 +4,7 @@ using LinearAlgebra
 
 export TimeDependentMatrixState, TimeDependentSchroedingerMatrixState
 export TimeDependentMatrix, TimeDependentSchroedingerMatrix
-export CF2, CF4, CF4g6, CF4o, CF6, CF6n, CF6ng8, CF7, CF8, CF8C, CF8AF,  CF10, DoPri45, Magnus4
+export CF2, CF4, CF4g6, CF4o, CF6, CF6n, CF6ng8, CF7, CF8, CF8C, CF8AF,  CF10, DoPri45, Tsit45, Magnus4
 export load_example
 export EquidistantTimeStepper, local_orders, local_orders_est
 export AdaptiveTimeStepper, EquidistantCorrectedTimeStepper
@@ -669,6 +669,24 @@ DoPri45 = EmbeddedRungeKuttaScheme(
           [5179/57600, 0.0,        7571/16695,  393/640, -92097/339200, 187/2100, 1/40],
           4
         )
+
+# see 
+#   Ch.Tsitouras: Runge–Kutta pairs of order 5(4) satisfying only the first column simplifying assumption
+#   Computers & Mathematics with Applications 62 (2011), 770-775
+   Tsit45 = EmbeddedRungeKuttaScheme(
+          [0.0                  0.0                 0.0                0.0                   0.0                   0.0                 0.0
+           0.161                0.0                 0.0                0.0                   0.0                   0.0                 0.0
+          -0.008480655492356992 0.3354806554923570  0.0                0.0                   0.0                   0.0                 0.0
+           2.8971530571054944   -6.359448489975075  4.362295432869581  0.0                   0.0                   0.0                 0.0
+           5.32586482843926     -11.74888356406283  7.495539342889836  -0.09249506636175525  0.0                   0.0                 0.0
+           5.8614554429464      -12.92096931784711  8.159367898576159  -0.07158497328140100  -0.02826905039406838  0.0                 0.0
+           0.09646076681806523  0.01                0.4798896504144996 1.379008574103742     -3.290069515436081    2.324710524099774   0.0],
+          [0.0,                 0.161,              0.327,             0.9,                  0.9800255409045097,   1.0,                1.0],
+          [0.001780011052226,   0.000816434459657, -0.007880878010262, 0.144711007173263, -0.58235716545255,  0.458082105929187, -1/66]+
+          [0.09646076681806523, 0.01 ,             0.4798896504144996, 1.379008574103742, -3.290069515436081, 2.324710524099774 , 0.0],  
+          4
+         )
+        
 
 #TODO: consider case b!=A[end,:]
 
