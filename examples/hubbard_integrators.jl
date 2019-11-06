@@ -164,6 +164,7 @@ function LinearAlgebra.mul!(y, B::BState, u)
     B.v[:] = (-1im)*B.c*B.Hsu+B.s*B.Hau
     B.w[:] = B.H.H_diag.*B.v
     y[:] -= B.w
+    B.H.counter += 1
 end
 
 mutable struct MagnusStrang <: Scheme 
