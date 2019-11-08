@@ -5,6 +5,7 @@ using LinearAlgebra
 export TimeDependentMatrixState, TimeDependentSchroedingerMatrixState
 export TimeDependentMatrix, TimeDependentSchroedingerMatrix
 export CF2, CF4, CF4g6, CF4o, CF6, CF6n, CF6ng8, CF7, CF8, CF8C, CF8AF,  CF10, DoPri45, Tsit45, Magnus4
+export SchemeEstimatorPair
 export load_example
 export EquidistantTimeStepper, local_orders, local_orders_est
 export AdaptiveTimeStepper, EquidistantCorrectedTimeStepper
@@ -88,6 +89,29 @@ end
 load_example(name::String) = include(string(dirname(@__FILE__),"/../examples/",name))
 
 abstract type Scheme end
+
+mutable struct SchemeEstimatorPair <: Scheme
+    scheme::Scheme
+    estimator::Scheme
+end
+
+get_order(scheme::SchemeEstimatorPair) = get_order(scheme.scheme)
+number_of_exponentials(scheme::SchemeEstimatorPair) = number_of_exponentials(scheme.scheme)
+get_lwsp(H, scheme::SchemeEstimatorPair, m::Integer) = max(get_lwsp(H, scheme.scheme, m), get_lwsp(H, scheme.estimator, m))
+
+function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{Float64},1},
+                 H::TimeDependentMatrix, 
+                 t::Real, dt::Real,
+                 scheme::SchemeEstimatorPair,
+                 wsp::Vector{Vector{Complex{Float64}}}; 
+                 expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
+    copyto!(psi_est, psi)
+    step!(psi, H, t, dt, scheme.scheme, wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
+    step!(psi_est, H, t, dt, scheme.estimator, wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
+    psi_est[:] = psi[:] - psi_est[:]
+end
+
+
 
 
 """
@@ -977,7 +1001,7 @@ function Base.iterate(ets::EquidistantTimeStepper, t=ets.t0)
     if t >= ets.tend
         return nothing
     end
-    step!(ets.psi, ets.H, t, ets.dt, ets.scheme, ets.wsp, expmv_tol=ets.expmv_tol, expmv_m=ets.expmv.m)
+    step!(ets.psi, ets.H, t, ets.dt, ets.scheme, ets.wsp, expmv_tol=ets.expmv_tol, expmv_m=ets.expmv_m)
     t1 = t + ets.dt < ets.tend ? t + ets.dt : ets.tend
     t1, t1
 end
