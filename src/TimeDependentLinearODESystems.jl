@@ -4,7 +4,7 @@ using LinearAlgebra
 
 export TimeDependentMatrixState, TimeDependentSchroedingerMatrixState
 export TimeDependentMatrix, TimeDependentSchroedingerMatrix
-export CF2, CF4, CF4g6, CF4o, CF6, CF6n, CF6ng8, CF7, CF8, CF8C, CF8AF,  CF10, DoPri45, Tsit45, Magnus4
+export CF2, CF4, CF4g6, CF4o, CF4oH, CF6, CF6n, CF6ng8, CF7, CF8, CF8C, CF8AF,  CF10, DoPri45, Tsit45, Magnus4
 export SchemeEstimatorPair
 export load_example
 export EquidistantTimeStepper, local_orders, local_orders_est
@@ -167,7 +167,7 @@ end
 
 get_order(scheme::CommutatorFreeScheme) = scheme.p
 number_of_exponentials(scheme::CommutatorFreeScheme) = size(scheme.A, 1)
-get_lwsp(H, scheme::CommutatorFreeScheme, m::Integer) = min(m, size(H,2))+2 
+get_lwsp(H, scheme::CommutatorFreeScheme, m::Integer) = m+2 
 
 """Exponential midpoint rule"""
 CF2 = CommutatorFreeScheme( ones(1,1), [1/2], 2 )
@@ -188,6 +188,13 @@ CF4o = CommutatorFreeScheme(
     [37/240+10/87*sqrt(5/3) -1/30  37/240-10/87*sqrt(5/3)
      -11/360                23/45  -11/360
      37/240-10/87*sqrt(5/3) -1/30  37/240+10/87*sqrt(5/3)],
+     [1/2-sqrt(15)/10, 1/2, 1/2+sqrt(15)/10],
+     4)
+
+CF4oH = CommutatorFreeScheme(
+[ 0.311314623379755386999882845054  -0.027985859584027834823234100810  0.007787203484903714984134658507
+ -0.041324049086881324206239725785   0.500416163612500114090912646066 -0.041324049086881324206239725788
+  0.0077872034849037149841346585064 -0.027985859584027834823234100810  0.311314623379755386999882845055],     
      [1/2-sqrt(15)/10, 1/2, 1/2+sqrt(15)/10],
      4)
 
@@ -778,7 +785,7 @@ end
 Magnus4 = MagnusScheme(4)
 
 
-get_lwsp(H, scheme::MagnusScheme, m::Integer) = min(m, size(H,2))+4 
+get_lwsp(H, scheme::MagnusScheme, m::Integer) = m+4 
 get_order(M::MagnusScheme) = M.p 
 number_of_exponentials(::MagnusScheme) = 1
 
