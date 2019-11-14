@@ -1,6 +1,6 @@
 load_example("hubbard.jl")
 
-export CF4BF, CF4g6BF, CF4oBF
+export CF2g4BF, CF4g6BF, CF4oBF, gen_CF4
 
 function mul_diag!(Y, H::Hubbard, B)
     Y[:] = H.H_diag.*B
@@ -24,13 +24,25 @@ end
 
 mutable struct SchemeWithBruteForceErrorEstimator <: Scheme 
     scheme :: Scheme
+    T::Matrix{Float64}
     CL::Vector{Float64}  #coeffs of [A1,[A1,[A1,A2]]], [A2,[A1,A2]], 
                          #[A1,[A1,A3]], [A2,A3] in leading term of local error
 end
 
-CF4BF = SchemeWithBruteForceErrorEstimator(CF4,[1/1440, -1/540, -1/60, 1/30]) 
-CF4g6BF = SchemeWithBruteForceErrorEstimator(CF4g6,[1/1440, -1/540, -1/60, 1/30]) 
-CF4oBF = SchemeWithBruteForceErrorEstimator(CF4o,[-1/115200, -31/454140, 1/4000, 1/870]) 
+CF2g4BF = SchemeWithBruteForceErrorEstimator(CF2g4,
+        [1/2        1/2
+         sqrt(3)/2 sqrt(3)/2],
+        [1/6]) 
+CF4g6BF = SchemeWithBruteForceErrorEstimator(CF4g6,
+        [ 5/18        4/9   5/18
+        -sqrt(15)/6   0    sqrt(15)/6
+          5/9       -10/9    5/9],
+        [1/1440, -1/540, -1/60, 1/30]) 
+CF4oBF = SchemeWithBruteForceErrorEstimator(CF4o,
+        [ 5/18        4/9   5/18
+        -sqrt(15)/6   0    sqrt(15)/6
+          5/9       -10/9    5/9],
+        [-1/115200, -31/454140, 1/4000, 1/870]) 
 
 get_lwsp(H, scheme::SchemeWithBruteForceErrorEstimator, m) = 
     max(get_lwsp(H, scheme.scheme, m), 8)
@@ -40,6 +52,29 @@ number_of_exponentials(scheme::SchemeWithBruteForceErrorEstimator) =
     number_of_exponentials(scheme.scheme)
 
 
+legendre(n::Integer, x::T) where T = (-1)^n*sum([binomial(n,k)*binomial(n+k,k)*(-1)^k*(k==0 ? 1 : x^k) for k=0:n])
+
+function gen_CF4(f21, f23, x::Vector, w::Vector; brute_force_err_est::Bool=false)
+    q = length(x)
+    @assert q==length(w)
+    F=[ (1-f21)/2 -1/(3*f21+3)  -f23/2
+        f21        0             f23
+        (1-f21)/2  1/(3*f21+3)  -f23/2]
+
+    T = [(2*n-1)*w[m]*legendre(n-1,x[m]) for n=1:3, m=1:q]
+    A = F*T
+    CF4 = TimeDependentLinearODESystems.CommutatorFreeScheme(A, x, 4)
+
+    if brute_force_err_est
+        CL = [-(1/288)*f21^2+1/1440,  ((1/60)*f21^2-(1/270)*f21-1/540)*(1/(f21+1)^2),
+              -1/60-(1/24)*f23-(1/24)*f21*f23, ((1/30)*f21+1/30+(1/6)*f23)*(1/(f21+1))]
+        CF4BF = SchemeWithBruteForceErrorEstimator(CF4, T, CL)
+        return CF4BF
+    else
+        return CF4
+    end
+end
+
 
 function TimeDependentLinearODESystems.step_estimated!(
              psi::Array{Complex{Float64},1}, 
@@ -48,15 +83,94 @@ function TimeDependentLinearODESystems.step_estimated!(
              t::Real, dt::Real,
              scheme::SchemeWithBruteForceErrorEstimator,
              wsp::Vector{Vector{Complex{Float64}}};
-             expmv_tol::Real=1e-1, expmv_m::Int=min(30, size(H,1)))
-    @assert get_order(scheme)==4 "Brute force error estimator implemented for order 4 only"
+             expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     copyto!(psi_est, psi)
     step!(psi, H, t, dt, scheme.scheme, wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
-    brute_force_error_estimator!(psi_est, H, t, dt, scheme.CL, wsp)
+    p = get_order(scheme)
+    if p==2
+        brute_force_error_estimator_2!(psi_est, H, t, dt, scheme, wsp)
+    elseif p==4
+        brute_force_error_estimator_4!(psi_est, H, t, dt, scheme, wsp)
+    else
+        error("Brute force error estimator implemented for order 4 only")
+    end
 end
 
 
-# Code of brute_force_error_estimator generated 
+
+function brute_force_error_estimator_2!( 
+             psi_est::Array{Complex{Float64},1}, #inout, in: psi, out:: psi_est
+             H::Hubbard, 
+             t::Real, dt::Real,
+             scheme::SchemeWithBruteForceErrorEstimator,
+             wsp::Vector{Vector{Complex{Float64}}})
+    u = psi_est
+    u1 = wsp[1]
+    u2 = wsp[2] 
+    E1 = wsp[3]
+
+    x = scheme.scheme.c 
+    ff = H.f.(t .+ dt*x)
+
+    f = scheme.T * ff
+
+    fd1 = -1im*dt
+    fs1 = -1im*dt*real(f[1])
+    fa1 = -1im*1im*dt*imag(f[1])
+    fs2 = -1im*dt*real(f[2])
+    fa2 = -1im*1im*dt*imag(f[2])
+
+    E1[:] .= 0
+    
+    #u1 = H0*u
+    mul_diag!(u1, H, u)
+    
+    #u2 = H0*H0*u1
+    #mul_diag!(u2, H, u1)
+    
+    #u2 = H1*H0*u1
+    mul_symm!(u2, H, u1)
+    E1[:] += (-fs2*fd1)*u2
+    
+    #u2 = H2*H0*u1
+    mul_anti!(u2, H, u1)
+    E1[:] += (-fa2*fd1)*u2
+    
+    #u1 = H1*u
+    mul_symm!(u1, H, u)
+    
+    #u2 = H0*H1*u1
+    mul_diag!(u2, H, u1)
+    E1[:] += (fd1*fs2)*u2
+    
+    #u2 = H1*H1*u1
+    #mul_symm!(u2, H, u1)
+    
+    #u2 = H2*H1*u1
+    mul_anti!(u2, H, u1)
+    E1[:] += (fa1*fs2-fa2*fs1)*u2
+    
+    #u1 = H2*u
+    mul_anti!(u1, H, u)
+    
+    #u2 = H0*H2*u1
+    mul_diag!(u2, H, u1)
+    E1[:] += (fd1*fa2)*u2
+    
+    #u2 = H1*H2*u1
+    mul_symm!(u2, H, u1)
+    E1[:] += (fs1*fa2-fs2*fa1)*u2
+    
+    #u2 = H2*H2*u1
+    #mul_anti!(u2, H, u1)
+
+    H.counter += 3 # (#mul_symm! + #mul_anti!)/2 
+
+    psi_est[:] = scheme.CL[1]*E1
+end
+
+
+# Code of brute_force_error_estimator_4! generated 
 # by the following Maple code .
 # For Expocon see https://github.com/HaraldHofstaetter/Expocon.mpl
 
@@ -100,11 +214,11 @@ end
 # end do
 
 
-function brute_force_error_estimator!( 
+function brute_force_error_estimator_4!( 
              psi_est::Array{Complex{Float64},1}, #inout, in: psi, out:: psi_est
              H::Hubbard, 
              t::Real, dt::Real,
-             CL::Vector{Float64},
+             scheme::SchemeWithBruteForceErrorEstimator,
              wsp::Vector{Vector{Complex{Float64}}})
     u = psi_est
     u1 = wsp[1]
@@ -116,20 +230,18 @@ function brute_force_error_estimator!(
     E3 = wsp[7] 
     E4 = wsp[8] 
 
-    x = [1/2-sqrt(15)/10, 1/2, 1/2+sqrt(15)/10]
+    x = scheme.scheme.c 
     ff = H.f.(t .+ dt*x)
 
-    f1 = dt*(5/18*ff[1] + 4/9*ff[2] + 5/18*ff[3])
-    f2 = dt*(-1/6*sqrt(15)*ff[1]    + 1/6*sqrt(15)*ff[3])
-    f3 = dt*(5/9*ff[1]  -10/9*ff[2] + 5/9*ff[3])
+    f = scheme.T * ff
     
     fd1 = -1im*dt
-    fs1 = -1im*real(f1)
-    fa1 = -1im*1im*imag(f1)
-    fs2 = -1im*real(f2)
-    fa2 = -1im*1im*imag(f2)
-    fs3 = -1im*real(f3)
-    fa3 = -1im*1im*imag(f3)
+    fs1 = -1im*dt*real(f[1])
+    fa1 = -1im*1im*dt*imag(f[1])
+    fs2 = -1im*dt*real(f[2])
+    fa2 = -1im*1im*dt*imag(f[2])
+    fs3 = -1im*dt*real(f[3])
+    fa3 = -1im*1im*dt*imag(f[3])
 
     E1[:] .= 0
     E2[:] .= 0
@@ -613,12 +725,12 @@ function brute_force_error_estimator!(
     #mul_anti!(u4, H, u3)
     
 
-    H.counter += 38 # (#mul_symm! + #mul_anti!)/2 rounded up
+    H.counter += 38 # (#mul_symm! + #mul_anti!)/2 
     
-    psi_est[:] = CL[1]*E1 
-    psi_est[:] += CL[2]*E2 
-    psi_est[:] += CL[3]*E3 
-    psi_est[:] += CL[4]*E4
+    psi_est[:] = scheme.CL[1]*E1 
+    psi_est[:] += scheme.CL[2]*E2 
+    psi_est[:] += scheme.CL[3]*E3 
+    psi_est[:] += scheme.CL[4]*E4
 
 end
     
