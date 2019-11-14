@@ -4,7 +4,8 @@ using LinearAlgebra
 
 export TimeDependentMatrixState, TimeDependentSchroedingerMatrixState
 export TimeDependentMatrix, TimeDependentSchroedingerMatrix
-export CF2, CF4, CF4g6, CF4o, CF4oH, CF6, CF6n, CF6ng8, CF7, CF8, CF8C, CF8AF,  CF10, DoPri45, Tsit45, Magnus4
+export CF2, CF2g4, CF4, CF4g6, CF4o, CF4oH, CF6, CF6n, CF6ng8 
+export CF7, CF8, CF8C, CF8AF,  CF10, DoPri45, Tsit45, Magnus4
 export SchemeEstimatorPair
 export load_example
 export EquidistantTimeStepper, local_orders, local_orders_est
@@ -93,6 +94,8 @@ abstract type Scheme end
 mutable struct SchemeEstimatorPair <: Scheme
     scheme::Scheme
     estimator::Scheme
+    substeps::Int64
+    SchemeEstimatorPair(scheme::Scheme, estimator::Scheme; substeps::Int=1) = new(scheme, estimator, substeps)
 end
 
 get_order(scheme::SchemeEstimatorPair) = get_order(scheme.scheme)
@@ -107,7 +110,11 @@ function step_estimated!(psi::Array{Complex{Float64},1}, psi_est::Array{Complex{
                  expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     copyto!(psi_est, psi)
     step!(psi, H, t, dt, scheme.scheme, wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
-    step!(psi_est, H, t, dt, scheme.estimator, wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
+    dt1 = dt/scheme.substeps
+    for k=1:scheme.substeps
+        step!(psi_est, H, t, dt1, scheme.estimator, wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
+        t += dt1
+    end
     psi_est[:] = psi[:] - psi_est[:]
 end
 
@@ -172,6 +179,8 @@ get_lwsp(H, scheme::CommutatorFreeScheme, m::Integer) = m+2
 """Exponential midpoint rule"""
 CF2 = CommutatorFreeScheme( ones(1,1), [1/2], 2 )
 
+CF2g4 = CommutatorFreeScheme( [1/2 1/2], [1/2-sqrt(3)/6, 1/2+sqrt(3)/6], 2 )
+
 CF4 = CommutatorFreeScheme(
     [1/4+sqrt(3)/6 1/4-sqrt(3)/6
      1/4-sqrt(3)/6 1/4+sqrt(3)/6],
@@ -192,10 +201,13 @@ CF4o = CommutatorFreeScheme(
      4)
 
 CF4oH = CommutatorFreeScheme(
-[ 0.311314623379755386999882845054  -0.027985859584027834823234100810  0.007787203484903714984134658507
- -0.041324049086881324206239725785   0.500416163612500114090912646066 -0.041324049086881324206239725788
-  0.0077872034849037149841346585064 -0.027985859584027834823234100810  0.311314623379755386999882845055],     
-     [1/2-sqrt(15)/10, 1/2, 1/2+sqrt(15)/10],
+#[ 0.311314623379755386999882845054  -0.027985859584027834823234100810  0.007787203484903714984134658507
+# -0.041324049086881324206239725785   0.500416163612500114090912646066 -0.041324049086881324206239725788
+#  0.0077872034849037149841346585064 -0.027985859584027834823234100810  0.311314623379755386999882845055],     
+[  0.302146842308616954258187683416  -0.030742768872036394116279742324  0.004851603407498684079562131338
+  -0.029220667938337860559972036973   0.505929982188517232677003929089 -0.029220667938337860559972036973
+   0.004851603407498684079562131337  -0.030742768872036394116279742324  0.302146842308616954258187683417],
+  [1/2-sqrt(15)/10, 1/2, 1/2+sqrt(15)/10],
      4)
 
 CF6 = TimeDependentLinearODESystems.CommutatorFreeScheme(
