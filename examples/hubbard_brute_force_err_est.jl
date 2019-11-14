@@ -1,6 +1,6 @@
 load_example("hubbard.jl")
 
-export CF2g4BF, CF4g6BF, CF4oBF, gen_CF4
+export CF2g4BF, CF4g6BF, CF4oBF, CF4oHBF, gen_CF4
 
 function mul_diag!(Y, H::Hubbard, B)
     Y[:] = H.H_diag.*B
@@ -33,16 +33,25 @@ CF2g4BF = SchemeWithBruteForceErrorEstimator(CF2g4,
         [1/2        1/2
          sqrt(3)/2 sqrt(3)/2],
         [1/6]) 
+
 CF4g6BF = SchemeWithBruteForceErrorEstimator(CF4g6,
         [ 5/18        4/9   5/18
         -sqrt(15)/6   0    sqrt(15)/6
           5/9       -10/9    5/9],
         [1/1440, -1/540, -1/60, 1/30]) 
+
 CF4oBF = SchemeWithBruteForceErrorEstimator(CF4o,
         [ 5/18        4/9   5/18
         -sqrt(15)/6   0    sqrt(15)/6
           5/9       -10/9    5/9],
         [-1/115200, -31/454140, 1/4000, 1/870]) 
+
+CF4oHBF = SchemeWithBruteForceErrorEstimator(CF4oH,
+        [ 5/18        4/9   5/18
+        -sqrt(15)/6   0    sqrt(15)/6
+          5/9       -10/9    5/9],
+        [-8.544743700441166636878456E-7, -0.819876284228042871927452461E-4, 
+        5.08679647548227151745526E-8,  0.15148309849837715519531315151E-2])
 
 get_lwsp(H, scheme::SchemeWithBruteForceErrorEstimator, m) = 
     max(get_lwsp(H, scheme.scheme, m), 8)
