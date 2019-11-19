@@ -95,41 +95,58 @@ function TimeDependentLinearODESystems.step_estimated!(
              expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
     copyto!(psi_est, psi)
     step!(psi, H, t, dt, scheme.scheme, wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
+    
+    x = scheme.scheme.c 
+    ff = H.f.(t .+ dt*x)
+    f = scheme.T * ff
+    
     p = get_order(scheme)
     if p==2
-        brute_force_error_estimator_2!(psi_est, H, t, dt, scheme, wsp)
+        B = BF2State(H, -1im*dt, 1.0, f, scheme.CL, wsp) 
+        mul!(psi_est, B, psi_est)
     elseif p==4
-        brute_force_error_estimator_4!(psi_est, H, t, dt, scheme, wsp)
+        B = BF4State(H, -1im*dt, 1.0, f, scheme.CL, wsp) 
+        mul!(psi_est, B, psi_est)
     else
         error("Brute force error estimator implemented for order 4 only")
     end
 end
 
 
+struct BF2State <: TimeDependentSchroedingerMatrixState
+    H::Hubbard
+    fac1::Complex{Float64}
+    fac2::Complex{Float64}
+    f::Vector{Complex{Float64}}
+    CL::Vector{Float64}
+    wsp::Vector{Vector{Complex{Float64}}}
+end
 
-function brute_force_error_estimator_2!( 
-             psi_est::Array{Complex{Float64},1}, #inout, in: psi, out:: psi_est
-             H::Hubbard, 
-             t::Real, dt::Real,
-             scheme::SchemeWithBruteForceErrorEstimator,
-             wsp::Vector{Vector{Complex{Float64}}})
-    u = psi_est
+
+LinearAlgebra.size(B::BF2State) = size(B.H)
+LinearAlgebra.size(B::BF2State, dim::Int) = size(B.H, dim) 
+LinearAlgebra.eltype(B::BF2State) = Complex{Float64}
+LinearAlgebra.issymmetric(B::BF2State) = false
+LinearAlgebra.ishermitian(B::BF2State) = true
+LinearAlgebra.checksquare(B::BF2State) = B.H.N_psi
+
+
+function LinearAlgebra.mul!(y, B::BF2State, u)             
     u1 = wsp[1]
     u2 = wsp[2] 
     E1 = wsp[3]
 
-    x = scheme.scheme.c 
-    ff = H.f.(t .+ dt*x)
-
-    f = scheme.T * ff
-
-    fd1 = -1im*dt
-    fs1 = -1im*dt*real(f[1])
-    fa1 = -1im*1im*dt*imag(f[1])
-    fs2 = -1im*dt*real(f[2])
-    fa2 = -1im*1im*dt*imag(f[2])
+    fd1 = B.fac1
+    fs1 = B.fac1*real(B.f[1])
+    fa1 = 1im*B.fac1*imag(B.f[1])
+    fs2 = B.fac1*real(B.f[2])
+    fa2 = 1im*B.fac1*imag(B.f[2])
+    fs3 = B.fac1*real(B.f[3])
+    fa3 = 1im*B.fac1*imag(B.f[3])
 
     E1[:] .= 0
+
+    H = B.H
     
     #u1 = H0*u
     mul_diag!(u1, H, u)
@@ -175,13 +192,12 @@ function brute_force_error_estimator_2!(
 
     H.counter += 3 # (#mul_symm! + #mul_anti!)/2 
 
-    psi_est[:] = scheme.CL[1]*E1
+    y[:] = (B.fac2*B.CL[1])*E1
 end
 
 
-# Code of brute_force_error_estimator_4! generated 
-# by the following Maple code .
-# For Expocon see https://github.com/HaraldHofstaetter/Expocon.mpl
+# Code of mul!(y, B::BF4State, u) generated  by the following Maple code:
+# (for Expocon see https://github.com/HaraldHofstaetter/Expocon.mpl)
 
 # with(Physics);
 # with(Expocon);
@@ -223,39 +239,48 @@ end
 # end do
 
 
-function brute_force_error_estimator_4!( 
-             psi_est::Array{Complex{Float64},1}, #inout, in: psi, out:: psi_est
-             H::Hubbard, 
-             t::Real, dt::Real,
-             scheme::SchemeWithBruteForceErrorEstimator,
-             wsp::Vector{Vector{Complex{Float64}}})
-    u = psi_est
-    u1 = wsp[1]
-    u2 = wsp[2] 
-    u3 = wsp[3] 
-    u4 = wsp[4] 
-    E1 = wsp[5]
-    E2 = wsp[6]
-    E3 = wsp[7] 
-    E4 = wsp[8] 
+struct BF4State <: TimeDependentSchroedingerMatrixState
+    H::Hubbard
+    fac1::Complex{Float64}
+    fac2::Complex{Float64}
+    f::Vector{Complex{Float64}}
+    CL::Vector{Float64}
+    wsp::Vector{Vector{Complex{Float64}}}
+end
 
-    x = scheme.scheme.c 
-    ff = H.f.(t .+ dt*x)
 
-    f = scheme.T * ff
-    
-    fd1 = -1im*dt
-    fs1 = -1im*dt*real(f[1])
-    fa1 = -1im*1im*dt*imag(f[1])
-    fs2 = -1im*dt*real(f[2])
-    fa2 = -1im*1im*dt*imag(f[2])
-    fs3 = -1im*dt*real(f[3])
-    fa3 = -1im*1im*dt*imag(f[3])
+LinearAlgebra.size(B::BF4State) = size(B.H)
+LinearAlgebra.size(B::BF4State, dim::Int) = size(B.H, dim) 
+LinearAlgebra.eltype(B::BF4State) = Complex{Float64}
+LinearAlgebra.issymmetric(B::BF4State) = false
+LinearAlgebra.ishermitian(B::BF4State) = true
+LinearAlgebra.checksquare(B::BF4State) = B.H.N_psi
+
+
+function LinearAlgebra.mul!(y, B::BF4State, u)             
+    u1 = B.wsp[1]
+    u2 = B.wsp[2] 
+    u3 = B.wsp[3] 
+    u4 = B.wsp[4] 
+    E1 = B.wsp[5]
+    E2 = B.wsp[6]
+    E3 = B.wsp[7] 
+    E4 = B.wsp[8] 
+
+    fd1 = B.fac1
+    fs1 = B.fac1*real(B.f[1])
+    fa1 = 1im*B.fac1*imag(B.f[1])
+    fs2 = B.fac1*real(B.f[2])
+    fa2 = 1im*B.fac1*imag(B.f[2])
+    fs3 = B.fac1*real(B.f[3])
+    fa3 = 1im*B.fac1*imag(B.f[3])
 
     E1[:] .= 0
     E2[:] .= 0
     E3[:] .= 0
     E4[:] .= 0
+
+    H = B.H
     
     #u1 = H0*u
     mul_diag!(u1, H, u)
@@ -733,14 +758,13 @@ function brute_force_error_estimator_4!(
     # u4 = H2*H2*H2*H2*u
     #mul_anti!(u4, H, u3)
     
-
     H.counter += 38 # (#mul_symm! + #mul_anti!)/2 
     
-    psi_est[:] = scheme.CL[1]*E1 
-    psi_est[:] += scheme.CL[2]*E2 
-    psi_est[:] += scheme.CL[3]*E3 
-    psi_est[:] += scheme.CL[4]*E4
-
+    y[:] = B.CL[1]*E1 
+    y[:] += B.CL[2]*E2 
+    y[:] += B.CL[3]*E3 
+    y[:] += B.CL[4]*E4
+    y[:] *= B.fac2
 end
     
     
