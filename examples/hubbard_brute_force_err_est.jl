@@ -27,34 +27,37 @@ mutable struct SchemeWithBruteForceErrorEstimator <: Scheme
     T::Matrix{Float64}
     CL::Vector{Float64}  #coeffs of [A1,[A1,[A1,A2]]], [A2,[A1,A2]], 
                          #[A1,[A1,A3]], [A2,A3] in leading term of local error
+    exponentiate::Bool
 end
 
 CF2g4BF = SchemeWithBruteForceErrorEstimator(CF2g4,
         [1/2        1/2
          sqrt(3)/2 sqrt(3)/2],
-        [1/6]) 
+        [1/6], false) 
 
 CF4g6BF = SchemeWithBruteForceErrorEstimator(CF4g6,
         [ 5/18        4/9   5/18
         -sqrt(15)/6   0    sqrt(15)/6
           5/9       -10/9    5/9],
-        [1/1440, -1/540, -1/60, 1/30]) 
+        [1/1440, -1/540, -1/60, 1/30], false) 
 
 CF4oBF = SchemeWithBruteForceErrorEstimator(CF4o,
         [ 5/18        4/9   5/18
         -sqrt(15)/6   0    sqrt(15)/6
           5/9       -10/9    5/9],
-        [-1/115200, -31/454140, 1/4000, 1/870]) 
+        [-1/115200, -31/454140, 1/4000, 1/870], false) 
 
 CF4oHBF = SchemeWithBruteForceErrorEstimator(CF4oH,
         [ 5/18        4/9   5/18
         -sqrt(15)/6   0    sqrt(15)/6
           5/9       -10/9    5/9],
         [-8.544743700441166636878456E-7, -0.819876284228042871927452461E-4, 
-        5.08679647548227151745526E-8,  0.15148309849837715519531315151E-2])
+        5.08679647548227151745526E-8,  0.15148309849837715519531315151E-2], false)
 
 get_lwsp(H, scheme::SchemeWithBruteForceErrorEstimator, m) = 
-    max(get_lwsp(H, scheme.scheme, m), 8)
+    get_lwsp(H, scheme.scheme, m)+8
+#    max(get_lwsp(H, scheme.scheme, m), 8)
+
 get_order(scheme::SchemeWithBruteForceErrorEstimator) = 
     get_order(scheme.scheme) 
 number_of_exponentials(scheme::SchemeWithBruteForceErrorEstimator) = 
@@ -77,7 +80,7 @@ function gen_CF4(f21, f23, x::Vector, w::Vector; brute_force_err_est::Bool=false
     if brute_force_err_est
         CL = [-(1/288)*f21^2+1/1440,  ((1/60)*f21^2-(1/270)*f21-1/540)*(1/(f21+1)^2),
               -1/60-(1/24)*f23-(1/24)*f21*f23, ((1/30)*f21+1/30+(1/6)*f23)*(1/(f21+1))]
-        CF4BF = SchemeWithBruteForceErrorEstimator(CF4, T, CL)
+        CF4BF = SchemeWithBruteForceErrorEstimator(CF4, T, CL, false)
         return CF4BF
     else
         return CF4
@@ -93,22 +96,34 @@ function TimeDependentLinearODESystems.step_estimated!(
              scheme::SchemeWithBruteForceErrorEstimator,
              wsp::Vector{Vector{Complex{Float64}}};
              expmv_tol::Real=1e-7, expmv_m::Int=min(30, size(H,1)))
-    copyto!(psi_est, psi)
+    if !scheme.exponentiate
+        copyto!(psi_est, psi)
+    end
     step!(psi, H, t, dt, scheme.scheme, wsp, expmv_tol=expmv_tol, expmv_m=expmv_m)
     
     x = scheme.scheme.c 
     ff = H.f.(t .+ dt*x)
     f = scheme.T * ff
-    
+
     p = get_order(scheme)
-    if p==2
-        B = BF2State(H, -1im*dt, 1.0, f, scheme.CL, wsp) 
-        mul!(psi_est, B, psi_est)
-    elseif p==4
-        B = BF4State(H, -1im*dt, 1.0, f, scheme.CL, wsp) 
-        mul!(psi_est, B, psi_est)
+    @assert p==2||p==4 "Brute force error estimator implemented for order 4 only"
+    if scheme.exponentiate
+        wsp1 = unsafe_wrap(Vector{Vector{Complex{Float64}}}, 
+                           pointer(wsp,get_lwsp(H, scheme, expmv_m)-7),8)    
+        if p==2
+            B = BF2State(H, -1im*dt, -1im, f, scheme.CL, wsp1) 
+        elseif p==4
+            B = BF4State(H, -1im*dt, -1im, f, scheme.CL, wsp1) 
+        end
+        expmv1!(psi_est, 1, B, psi, expmv_tol, 8, wsp) # CHECK m=8 !!!
+        psi_est[:] = psi[:] - psi_est[:]
     else
-        error("Brute force error estimator implemented for order 4 only")
+        if p==2
+            B = BF2State(H, -1im*dt, 1, f, scheme.CL, wsp) 
+        elseif p==4
+            B = BF4State(H, -1im*dt, 1, f, scheme.CL, wsp) 
+        end
+        mul!(psi_est, B, psi_est)
     end
 end
 
