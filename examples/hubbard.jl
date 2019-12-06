@@ -202,9 +202,9 @@ function gen_H_upper_step(i_up::Int, H::Hubbard, nn, I, J, x_symm, x_anti)
                 n += 1
                 I[n] = i
                 J[n] = j
-		#s = get_sign_up(psi_new, psi_down, hop)
-                x_symm[n] = H.v_symm[hop[1], hop[2]] #*s
-                x_anti[n] = H.v_anti[hop[1], hop[2]] #*s
+		s = get_sign_up(psi_new, psi_down, hop)
+                x_symm[n] = H.v_symm[hop[1], hop[2]] *s
+                x_anti[n] = H.v_anti[hop[1], hop[2]] *s
             end
         end
         psi1_hops_down = differ_by_1_entry(psi_down)
@@ -214,9 +214,9 @@ function gen_H_upper_step(i_up::Int, H::Hubbard, nn, I, J, x_symm, x_anti)
                 n += 1
                 I[n] = i
                 J[n] = j
-		#s = get_sign_down(psi_up, psi_new, hop)
-                x_symm[n] = H.v_symm[hop[1], hop[2]] #*s
-                x_anti[n] = H.v_anti[hop[1], hop[2]] #*s
+		s = get_sign_down(psi_up, psi_new, hop)
+                x_symm[n] = H.v_symm[hop[1], hop[2]] *s
+                x_anti[n] = H.v_anti[hop[1], hop[2]] *s
             end
         end            
     end
@@ -246,7 +246,7 @@ end
 
 function gen_H_diag_parallel(H::Hubbard)
     d = SharedArray{Float64,1}(H.N_psi)
-    @distributed for i_up = 1:H.N_up 
+    Threads.@threads for i_up = 1:H.N_up 
         psi_up = H.tab_inv_up[i_up]
         x_up = sum([ H.v_symm[k,k] for k=1:H.N_s if psi_up[k] ]) 
 
@@ -284,9 +284,9 @@ function gen_H_upper(H::Hubbard)
                     n += 1
                     I[n] = i
                     J[n] = j
-                    #s = get_sign_up(psi_new, psi_down, hop)
-                    x_symm[n] = H.v_symm[hop[1], hop[2]] #*s 
-                    x_anti[n] = H.v_anti[hop[1], hop[2]] #*s 
+                    s = get_sign_up(psi_new, psi_down, hop)
+                    x_symm[n] = H.v_symm[hop[1], hop[2]] *s 
+                    x_anti[n] = H.v_anti[hop[1], hop[2]] *s 
                 end
             end
             psi1_hops_down = differ_by_1_entry(psi_down)
@@ -296,9 +296,9 @@ function gen_H_upper(H::Hubbard)
                     n += 1
                     I[n] = i
                     J[n] = j
-                    #s = get_sign_down(psi_up, psi_new, hop)
-                    x_symm[n] = H.v_symm[hop[1], hop[2]] #*s
-                    x_anti[n] = H.v_anti[hop[1], hop[2]] #*s
+                    s = get_sign_down(psi_up, psi_new, hop)
+                    x_symm[n] = H.v_symm[hop[1], hop[2]] *s
+                    x_anti[n] = H.v_anti[hop[1], hop[2]] *s
                 end
             end            
         end
