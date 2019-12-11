@@ -1,7 +1,6 @@
 using LinearAlgebra
 using SparseArrays
 using Combinatorics
-using Distributed
 using Arpack
 
 export Hubbard, HubbardState
