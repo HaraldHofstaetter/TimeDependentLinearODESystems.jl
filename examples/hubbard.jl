@@ -2,6 +2,7 @@ using LinearAlgebra
 using SparseArrays
 using Combinatorics
 using Arpack
+using Distributed
 
 export Hubbard, HubbardState
 export energy, groundstate, double_occupation, full
@@ -96,7 +97,7 @@ function gen_tabs(N::Integer, n::Integer)
     psi0 = falses(N)
     tab_inv = [psi0 for k=1:binomial(N, n)]
     j=0
-    for a in Combinatorics.Combinations(1:N,n)
+    for a in Combinatorics.combinations(1:N,n)
         j+=1
         psi = comb_to_bitarray(N, a)
         tab[psi] = j
@@ -245,7 +246,7 @@ end
 
 function gen_H_diag_parallel(H::Hubbard)
     d = SharedArray{Float64,1}(H.N_psi)
-    Threads.@threads for i_up = 1:H.N_up 
+    @distributed for i_up = 1:H.N_up 
         psi_up = H.tab_inv_up[i_up]
         x_up = sum([ H.v_symm[k,k] for k=1:H.N_s if psi_up[k] ]) 
 
