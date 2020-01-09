@@ -93,7 +93,11 @@ function expmv!(w::Vector{NT}, t::Number, A, v::Vector{NT};
         eltype(w)!= Complex{real(NT)}
         error("complex output array expected")
     end
+
     copyto!(w, v)
+    if iszero(w)
+        return w
+    end
     
     # storage for Krylov subspace vectors
     V = Array{typeof(w)}(undef,m+1)
